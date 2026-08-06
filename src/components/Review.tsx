@@ -4,90 +4,112 @@ import type { CurrentState, RecommendedSetting } from "../types"
 interface ReviewProps {
   settings: RecommendedSetting[]
   currentState: CurrentState
+  reviewedCount: number
   onDownloadJson: () => void
   onDownloadMarkdown: () => void
 }
 
-export function Review({ settings, currentState, onDownloadJson, onDownloadMarkdown }: ReviewProps) {
+const choiceLabel = (item: RecommendedSetting): string =>
+  item.setting.choices.find((choice) => choice.id === item.selected)?.label ?? item.selected
+
+export function Review({ settings, currentState, reviewedCount, onDownloadJson, onDownloadMarkdown }: ReviewProps) {
   const applicable = settings.filter((item) => item.disposition !== "Not applicable")
   const recommended = applicable.filter((item) => item.disposition === "Recommended")
   const overrides = applicable.filter((item) => item.disposition === "Override")
   const notApplicable = settings.filter((item) => item.disposition === "Not applicable")
   const profiles = buildDomainProfiles(settings)
-  const total = settings.length
 
   return (
-    <section className="review-stack" aria-labelledby="review-heading">
-      <div className="section-heading">
+    <section className="review-page" aria-labelledby="review-heading">
+      <header className="content-heading content-heading--intro">
         <div>
-          <span className="eyebrow">Step 4 · Review / export</span>
-          <h2 id="review-heading">A decision-ready desired state</h2>
+          <span className="section-kicker">Review and export</span>
+          <h1 data-workspace-focus="section" id="review-heading" tabIndex={-1}>A decision-ready desired state.</h1>
+          <p>Review completion and selected values remain separate from the relative domain profile. Neither represents observed tenant state.</p>
         </div>
-        <p>Bars respond to your selected values. They compare influence and effort inside this catalog, not tenant adherence or a universal security score.</p>
+      </header>
+
+      {currentState === "unknown" && (
+        <div className="review-note">
+          <strong>Unknown stays unknown.</strong>
+          <span>The current tenant was not assessed, so missing evidence is not treated as a gap.</span>
+        </div>
+      )}
+
+      <div className="review-summary">
+        <div><strong>{reviewedCount} / {applicable.length}</strong><span>decisions reviewed</span></div>
+        <div><strong>{recommended.length}</strong><span>recommended values</span></div>
+        <div><strong>{overrides.length}</strong><span>deliberate overrides</span></div>
+        <div><strong>{notApplicable.length}</strong><span>not applicable</span></div>
       </div>
-      <aside className="scale-explainer">
-        <strong>Relative scales, not grades</strong>
-        <p>Control influence weights protective, guardrail, and enabling decisions by domain. Foundational choices cap a domain until strengthened. Complexity adds the rollout and ongoing effort of the selected choices.</p>
-      </aside>
-      {currentState === "unknown" && <aside className="unknown-note"><strong>Unknown stays unknown</strong><p>The current tenant was not assessed. These bars describe the selected desired state and do not treat missing evidence as a gap.</p></aside>}
-      <div className="profile-grid">
-        {profiles.map((profile) => (
-          <article className="profile-card" key={profile.domain}>
-            <h3>{profile.domain}</h3>
-            <div className="metric-heading"><span>Control influence</span><strong>{profile.postureLabel}</strong></div>
-            <div className="metric-track" role="progressbar" aria-label={`${profile.domain} control influence`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(profile.posture * 100)}>
-              <span className="metric-fill metric-fill--posture" style={{ width: `${profile.posture * 100}%` }} />
-            </div>
-            <div className="metric-scale"><span>Lower</span><span>Higher</span></div>
-            {profile.foundationLimited && <p className="foundation-note">A foundational choice limits this domain until it is strengthened.</p>}
-            <div className="complexity-grid">
+
+      <section className="review-section">
+        <header>
+          <h2>Relative domain profile</h2>
+          <p>Control influence, rollout effort, and ongoing effort are shown independently.</p>
+        </header>
+        <div className="domain-profile-list">
+          {profiles.map((profile) => (
+            <article className="domain-profile-row" key={profile.domain}>
               <div>
-                <div className="metric-heading"><span>Rollout effort</span><strong>{profile.rolloutBand}</strong></div>
-                <div className="metric-track metric-track--compact" role="progressbar" aria-label={`${profile.domain} rollout effort`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(profile.rolloutLoad * 100)}>
-                  <span className="metric-fill metric-fill--complexity" style={{ width: `${profile.rolloutLoad * 100}%` }} />
-                </div>
+                <strong>{profile.domain}</strong>
+                {profile.foundationLimited && <span>Foundational choice limits this domain</span>}
               </div>
-              <div>
-                <div className="metric-heading"><span>Ongoing effort</span><strong>{profile.ongoingBand}</strong></div>
-                <div className="metric-track metric-track--compact" role="progressbar" aria-label={`${profile.domain} ongoing effort`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(profile.ongoingLoad * 100)}>
-                  <span className="metric-fill metric-fill--complexity" style={{ width: `${profile.ongoingLoad * 100}%` }} />
-                </div>
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
-      <div className="review-grid">
-        <article className="summary-card">
-          <span className="eyebrow">Segmented baseline disposition</span>
-          <h3>{applicable.length} applicable decisions</h3>
-          <p>{recommended.length} recommended · {overrides.length} tailored overrides · {notApplicable.length} not applicable</p>
-          <div className="disposition-bar" aria-label={`${recommended.length} recommended, ${overrides.length} overrides, ${notApplicable.length} not applicable`}>
-            <span className="disposition-bar__recommended" style={{ width: `${total ? recommended.length / total * 100 : 0}%` }} />
-            <span className="disposition-bar__override" style={{ width: `${total ? overrides.length / total * 100 : 0}%` }} />
-            <span className="disposition-bar__na" style={{ width: `${total ? notApplicable.length / total * 100 : 0}%` }} />
-          </div>
-          <div className="disposition-legend"><span>Recommended</span><span>Override</span><span>Not applicable</span></div>
-        </article>
-        <article className="summary-card">
-          <span className="eyebrow">Change list</span>
-          <h3>{overrides.length ? `${overrides.length} deliberate override${overrides.length === 1 ? "" : "s"}` : "No overrides yet"}</h3>
-          <ul className="compact-list">
-            {overrides.length ? overrides.map(({ setting }) => <li key={setting.id}>{setting.title}</li>) : <li>Use Configure to tailor any recommendation.</li>}
+              <Metric ariaLabel={`${profile.domain} control influence`} label="Control influence" value={profile.posture} valueLabel={profile.postureLabel} />
+              <Metric ariaLabel={`${profile.domain} rollout effort`} label="Rollout effort" value={profile.rolloutLoad} valueLabel={profile.rolloutBand} />
+              <Metric ariaLabel={`${profile.domain} ongoing effort`} label="Ongoing effort" value={profile.ongoingLoad} valueLabel={profile.ongoingBand} />
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="review-section">
+        <header>
+          <h2>Deliberate overrides</h2>
+          <p>These values differ from the profile-specific recommendation.</p>
+        </header>
+        {overrides.length > 0 ? (
+          <ul className="override-list">
+            {overrides.map((item) => (
+              <li key={item.setting.id}>
+                <span><strong>{item.setting.title}</strong><small>{item.setting.domain}</small></span>
+                <span>{choiceLabel(item)}</span>
+              </li>
+            ))}
           </ul>
-        </article>
-      </div>
-      <div className="export-panel">
+        ) : (
+          <p className="empty-state">No overrides have been selected.</p>
+        )}
+      </section>
+
+      <section className="export-section">
         <div>
-          <span className="eyebrow">Portable plan</span>
-          <h3>Export the desired state</h3>
-          <p>JSON supports adapters; Markdown supports review and decision records. No direct tenant changes are made.</p>
+          <h2>Export the desired state</h2>
+          <p>JSON supports future adapters. Markdown supports review and decision records. No direct tenant changes are made.</p>
         </div>
-        <div className="button-row">
+        <div>
           <button className="button button--secondary" onClick={onDownloadMarkdown} type="button">Download Markdown</button>
-          <button className="button" onClick={onDownloadJson} type="button">Download JSON</button>
+          <button className="button button--primary" onClick={onDownloadJson} type="button">Download JSON</button>
         </div>
-      </div>
+      </section>
     </section>
+  )
+}
+
+interface MetricProps {
+  ariaLabel: string
+  label: string
+  value: number
+  valueLabel: string
+}
+
+function Metric({ ariaLabel, label, value, valueLabel }: MetricProps) {
+  return (
+    <div className="metric">
+      <div><span>{label}</span><strong>{valueLabel}</strong></div>
+      <div className="metric__track" role="progressbar" aria-label={ariaLabel} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(value * 100)}>
+        <span style={{ width: `${value * 100}%` }} />
+      </div>
+    </div>
   )
 }

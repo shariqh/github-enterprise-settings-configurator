@@ -23,6 +23,7 @@ export const getRecommendedSettings = (plan: Plan): RecommendedSetting[] =>
     const applies = setting.applies(plan.profile)
     return {
       setting,
+      recommended,
       selected,
       disposition: applies ? (selected === recommended ? "Recommended" : "Override") : "Not applicable",
     }

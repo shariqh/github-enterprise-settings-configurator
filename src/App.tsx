@@ -1,10 +1,20 @@
-import { useRef, useState } from "react"
-import { catalog, priorityOptions, productLabels } from "./catalog"
+import { useEffect, useRef, useState } from "react"
+import { priorityOptions, productLabels } from "./catalog"
+import { ChoiceGroup } from "./components/ChoiceGroup"
 import { Review } from "./components/Review"
-import { SettingCard } from "./components/SettingCard"
 import { buildMarkdown, download, exportObject } from "./logic/export"
 import { getProfileWarnings, getRecommendedSettings, isProfileValid } from "./logic/recommendations"
-import type { CurrentState, Entitlement, IdentityModel, Platform, PriorityId, ProductId, Profile } from "./types"
+import type {
+  CurrentState,
+  Domain,
+  Entitlement,
+  IdentityModel,
+  Platform,
+  PriorityId,
+  ProductId,
+  Profile,
+  RecommendedSetting,
+} from "./types"
 import "./App.css"
 
 const initialProfile: Profile = {
@@ -15,23 +25,102 @@ const initialProfile: Profile = {
   products: { actions: true, security: true, copilot: true, audit: true },
 }
 
-const steps = ["Target profile", "Priorities / baseline", "Configure", "Review / export"]
+const domainOrder: Domain[] = [
+  "Identity & administration",
+  "Organization & repository governance",
+  "Code security",
+  "Actions & supply chain",
+  "Audit visibility",
+  "Copilot governance",
+  "Copilot cost controls",
+]
+
+const platformLabels: Record<Platform, string> = {
+  dotcom: "GitHub.com",
+  residency: "GHE.com data residency",
+  ghes: "GHES 3.21",
+}
+
+const identityLabels: Record<IdentityModel, string> = {
+  personal: "Personal accounts",
+  emu: "EMU",
+}
+
+const entitlementLabels: Record<Entitlement, string> = {
+  enterprise: "Full enterprise",
+  copilot: "Copilot-only",
+}
+
+type ActiveSection = "profile" | "review" | Domain
+type DomainView = "guided" | "list"
+type ProfileKey = keyof Omit<Profile, "products">
+
+const isDomain = (section: ActiveSection): section is Domain =>
+  domainOrder.includes(section as Domain)
+
+const isReviewed = (item: RecommendedSetting, reviewed: Record<string, boolean>): boolean =>
+  item.setting.editable === false || reviewed[item.setting.id] === true
+
+const choiceLabel = (item: RecommendedSetting, choiceId = item.selected): string =>
+  item.setting.choices.find((choice) => choice.id === choiceId)?.label ?? choiceId
 
 function App() {
-  const [step, setStep] = useState(0)
   const [profile, setProfile] = useState<Profile>(initialProfile)
   const [priorities, setPriorities] = useState<PriorityId[]>(["secure-ghec"])
   const [selections, setSelections] = useState<Record<string, string>>({})
+  const [reviewed, setReviewed] = useState<Record<string, boolean>>({})
+  const [activeSection, setActiveSection] = useState<ActiveSection>("profile")
+  const [activeSettingId, setActiveSettingId] = useState<string | null>(null)
+  const [domainView, setDomainView] = useState<DomainView>("guided")
   const enterpriseProducts = useRef<Profile["products"]>({ ...initialProfile.products })
+  const workspaceRef = useRef<HTMLElement>(null)
+  const focusReady = useRef(false)
+
   const plan = { profile, priorities, selections }
   const settings = getRecommendedSettings(plan)
+  const applicableSettings = settings.filter((item) => item.disposition !== "Not applicable")
+  const settingsByDomain = domainOrder
+    .map((domain) => ({
+      domain,
+      items: applicableSettings.filter((item) => item.setting.domain === domain),
+    }))
+    .filter((group) => group.items.length > 0)
   const warnings = getProfileWarnings(profile)
-  const canMoveNext = step !== 0 || isProfileValid(profile)
+  const profileValid = isProfileValid(profile)
+  const reviewedCount = applicableSettings.filter((item) => isReviewed(item, reviewed)).length
 
-  const setProfileValue = <K extends keyof Omit<Profile, "products">>(key: K, value: Profile[K]) =>
+  const activeDomainItems = isDomain(activeSection)
+    ? settingsByDomain.find((group) => group.domain === activeSection)?.items ?? []
+    : []
+  const activeItem = activeDomainItems.find((item) => item.setting.id === activeSettingId) ?? activeDomainItems[0]
+  const activeIndex = activeItem
+    ? activeDomainItems.findIndex((item) => item.setting.id === activeItem.setting.id)
+    : -1
+  const remainingRecommendations = activeDomainItems.filter(
+    (item) => item.disposition === "Recommended" && !isReviewed(item, reviewed),
+  )
+
+  useEffect(() => {
+    if (!focusReady.current) {
+      focusReady.current = true
+      return
+    }
+
+    const focusTarget = isDomain(activeSection) && domainView === "guided"
+      ? workspaceRef.current?.querySelector<HTMLElement>('[data-workspace-focus="decision"]')
+      : workspaceRef.current?.querySelector<HTMLElement>('[data-workspace-focus="section"]')
+    focusTarget?.focus()
+  }, [activeSection, activeSettingId, domainView])
+
+  const clearReviews = () => setReviewed({})
+
+  const setProfileValue = <K extends ProfileKey>(key: K, value: Profile[K]) => {
+    clearReviews()
     setProfile((current) => ({ ...current, [key]: value }))
+  }
 
   const setProduct = (product: ProductId, enabled: boolean) => {
+    clearReviews()
     setProfile((current) => {
       const products = { ...current.products, [product]: enabled }
       if (current.entitlement === "enterprise") {
@@ -42,6 +131,7 @@ function App() {
   }
 
   const setEntitlement = (entitlement: Entitlement) => {
+    clearReviews()
     setProfile((current) => {
       if (current.entitlement === "enterprise" && entitlement === "copilot") {
         enterpriseProducts.current = { ...current.products }
@@ -56,119 +146,552 @@ function App() {
     })
   }
 
+  const togglePriority = (priority: PriorityId) => {
+    clearReviews()
+    setPriorities((current) =>
+      current.includes(priority)
+        ? current.filter((id) => id !== priority)
+        : [...current, priority],
+    )
+  }
+
+  const openDomain = (domain: Domain, settingId?: string) => {
+    const items = settingsByDomain.find((group) => group.domain === domain)?.items ?? []
+    const target = items.find((item) => item.setting.id === settingId)
+      ?? items.find((item) => !isReviewed(item, reviewed))
+      ?? items[0]
+    setActiveSection(domain)
+    setActiveSettingId(target?.setting.id ?? null)
+    setDomainView("guided")
+  }
+
+  const buildPlan = () => {
+    if (!profileValid) return
+    const firstGroup = settingsByDomain[0]
+    if (firstGroup) openDomain(firstGroup.domain)
+  }
+
+  const navigateTo = (section: ActiveSection) => {
+    if (section !== "profile" && !profileValid) {
+      setActiveSection("profile")
+      return
+    }
+    if (isDomain(section)) {
+      openDomain(section)
+      return
+    }
+    setActiveSection(section)
+  }
+
+  const selectDecisionValue = (settingId: string, value: string) => {
+    setSelections((current) => ({ ...current, [settingId]: value }))
+    setReviewed((current) => {
+      const next = { ...current }
+      delete next[settingId]
+      return next
+    })
+  }
+
+  const acceptRemainingRecommendations = () => {
+    setReviewed((current) => {
+      const next = { ...current }
+      remainingRecommendations.forEach((item) => {
+        next[item.setting.id] = true
+      })
+      return next
+    })
+  }
+
+  const saveAndContinue = () => {
+    if (!activeItem || !isDomain(activeSection)) return
+
+    const nextReviewed = { ...reviewed, [activeItem.setting.id]: true }
+    setReviewed(nextReviewed)
+
+    const nextItem = activeDomainItems
+      .slice(activeIndex + 1)
+      .find((item) => !isReviewed(item, nextReviewed))
+    if (nextItem) {
+      setActiveSettingId(nextItem.setting.id)
+      return
+    }
+
+    const wrappedItem = activeDomainItems
+      .slice(0, activeIndex)
+      .find((item) => !isReviewed(item, nextReviewed))
+    if (wrappedItem) {
+      setActiveSettingId(wrappedItem.setting.id)
+      return
+    }
+
+    const currentGroupIndex = settingsByDomain.findIndex((group) => group.domain === activeSection)
+    const remainingGroups = [
+      ...settingsByDomain.slice(currentGroupIndex + 1),
+      ...settingsByDomain.slice(0, currentGroupIndex),
+    ]
+    const nextGroup = remainingGroups
+      .find((group) => group.items.some((item) => !isReviewed(item, nextReviewed)))
+    if (nextGroup) {
+      const firstUnreviewed = nextGroup.items.find((item) => !isReviewed(item, nextReviewed))
+      setActiveSection(nextGroup.domain)
+      setActiveSettingId(firstUnreviewed?.setting.id ?? nextGroup.items[0]?.setting.id ?? null)
+      return
+    }
+
+    setActiveSection("review")
+  }
+
+  const goToPreviousDecision = () => {
+    if (activeIndex <= 0) return
+    setActiveSettingId(activeDomainItems[activeIndex - 1].setting.id)
+  }
+
   const reset = () => {
     enterpriseProducts.current = { ...initialProfile.products }
-    setStep(0)
     setProfile(initialProfile)
     setPriorities(["secure-ghec"])
     setSelections({})
+    setReviewed({})
+    setActiveSection("profile")
+    setActiveSettingId(null)
+    setDomainView("guided")
   }
+
+  const downloadJson = () =>
+    download(
+      "github-enterprise-desired-state.json",
+      JSON.stringify(exportObject(plan, settings), null, 2),
+      "application/json",
+    )
+  const downloadMarkdown = () =>
+    download(
+      "github-enterprise-desired-state.md",
+      buildMarkdown(plan, settings),
+      "text/markdown",
+    )
 
   return (
     <div className="app-shell">
-      <header className="masthead">
-        <div>
-          <span className="eyebrow">GitHub Enterprise · desired-state planner</span>
-          <h1>Settings Configurator</h1>
+      <header className="topbar">
+        <div className="brand">
+          <strong>Enterprise settings plan</strong>
+          <span>{platformLabels[profile.platform]} / {identityLabels[profile.identity]} / {entitlementLabels[profile.entitlement]}</span>
         </div>
-        <button className="text-button" onClick={reset} type="button">Reset plan</button>
+        <div className="topbar__actions">
+          <button className="link-button" onClick={() => navigateTo("profile")} type="button">Edit profile</button>
+          <button className="button button--secondary" disabled={!profileValid} onClick={() => navigateTo("review")} type="button">Review and export</button>
+        </div>
       </header>
 
-      <main>
-        <section className="intro">
-          <div>
-            <span className="eyebrow">A smaller decision path</span>
-            <h2>Turn fragmented guidance into an ordered enterprise baseline.</h2>
-          </div>
-          <p>Start with your target environment, shape a baseline, tailor recommended settings, then export a reviewable desired state.</p>
-        </section>
-
-        <nav aria-label="Configurator progress" className="progress">
-          {steps.map((label, index) => (
-            <button aria-current={step === index ? "step" : undefined} className={`progress__step ${step === index ? "progress__step--active" : ""} ${index < step ? "progress__step--complete" : ""}`} disabled={index > step && !isProfileValid(profile)} key={label} onClick={() => setStep(index)} type="button">
-              <span aria-hidden="true">{index < step ? "✓" : index + 1}</span>
-              <span>{label}</span>
-            </button>
-          ))}
+      <div className="workbench">
+        <nav className="path-nav" aria-label="Plan path">
+          <h2>Your path</h2>
+          <button
+            aria-current={activeSection === "profile" ? "step" : undefined}
+            className={`path-item ${activeSection === "profile" ? "path-item--active" : ""}`}
+            onClick={() => navigateTo("profile")}
+            type="button"
+          >
+            <span>Target profile</span>
+            <small>{warnings.length ? "Needs attention" : "Ready"}</small>
+          </button>
+          {settingsByDomain.map(({ domain, items }) => {
+            const complete = items.filter((item) => isReviewed(item, reviewed)).length
+            return (
+              <button
+                aria-current={activeSection === domain ? "step" : undefined}
+                className={`path-item ${activeSection === domain ? "path-item--active" : ""} ${complete === items.length ? "path-item--complete" : ""}`}
+                disabled={!profileValid}
+                key={domain}
+                onClick={() => navigateTo(domain)}
+                type="button"
+              >
+                <span>{domain}</span>
+                <small>{complete === items.length ? `✓ ${complete} reviewed` : `${complete} of ${items.length} reviewed`}</small>
+              </button>
+            )
+          })}
+          <button
+            aria-current={activeSection === "review" ? "step" : undefined}
+            className={`path-item path-item--review ${activeSection === "review" ? "path-item--active" : ""}`}
+            disabled={!profileValid}
+            onClick={() => navigateTo("review")}
+            type="button"
+          >
+            <span>Review and export</span>
+            <small>{reviewedCount} of {applicableSettings.length} reviewed</small>
+          </button>
         </nav>
 
-        {step === 0 && (
-          <section className="form-section" aria-labelledby="profile-heading">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow">Step 1 · Target profile</span>
-                <h2 id="profile-heading">Name the target, not the current tenant.</h2>
-              </div>
-              <p>This static MVP does not inspect a tenant. Choose the future state you are planning for.</p>
-            </div>
-            <div className="form-grid">
-              <SelectField label="Platform / hosting" onChange={(value) => setProfileValue("platform", value as Platform)} value={profile.platform} options={[["dotcom", "GitHub.com"], ["residency", "GHE.com data residency"], ["ghes", "GHES 3.21"]]} />
-              <SelectField label="Identity model" onChange={(value) => setProfileValue("identity", value as IdentityModel)} value={profile.identity} options={[["personal", "Personal accounts"], ["emu", "Enterprise Managed Users (EMU)"]]} />
-              <SelectField label="Entitlement" onChange={(value) => setEntitlement(value as Entitlement)} value={profile.entitlement} options={[["enterprise", "Full enterprise"], ["copilot", "Copilot-only"]]} />
-              <SelectField label="Current state" onChange={(value) => setProfileValue("currentState", value as CurrentState)} value={profile.currentState} options={[["greenfield", "Greenfield"], ["existing", "Existing environment"], ["migration", "Migration"], ["unknown", "Unknown / discovery needed"]]} />
-            </div>
-            <fieldset className="product-fieldset">
-              <legend>Enabled products</legend>
-              <div className="product-grid">
-                {(Object.keys(productLabels) as ProductId[]).map((product) => (
-                  <label className="toggle-card" key={product}>
-                    <input checked={profile.products[product]} disabled={profile.entitlement === "copilot" && product !== "copilot"} onChange={(event) => setProduct(product, event.target.checked)} type="checkbox" />
-                    <span>{productLabels[product]}</span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            {warnings.length > 0 && <div className="notice" role="alert"><strong>Resolve profile combinations</strong><ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
-          </section>
-        )}
+        <main className="workspace-main" ref={workspaceRef}>
+          {activeSection === "profile" && (
+            <ProfileEditor
+              applicableCount={applicableSettings.length}
+              onBuild={buildPlan}
+              onEntitlementChange={setEntitlement}
+              onPriorityToggle={togglePriority}
+              onProductChange={setProduct}
+              onProfileValueChange={setProfileValue}
+              priorities={priorities}
+              profile={profile}
+              warnings={warnings}
+            />
+          )}
 
-        {step === 1 && (
-          <section className="form-section" aria-labelledby="priority-heading">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow">Step 2 · Priorities / baseline</span>
-                <h2 id="priority-heading">Choose the lenses that shape this review.</h2>
-              </div>
-              <p>These priorities refine the conversation; they do not create a security score or compliance claim.</p>
-            </div>
-            <div className="priority-grid">
-              {priorityOptions.map((priority) => {
-                const checked = priorities.includes(priority.id)
-                return <label className={`priority-card ${checked ? "priority-card--selected" : ""}`} key={priority.id}>
-                  <input checked={checked} onChange={() => setPriorities((current) => checked ? current.filter((id) => id !== priority.id) : [...current, priority.id])} type="checkbox" />
-                  <span><strong>{priority.label}</strong><small>{priority.description}</small></span>
-                </label>
-              })}
-            </div>
-            <aside className="baseline-note"><strong>Baseline interpretation</strong><p>Recommendations are an adaptable starting point. “Not applicable” reflects your target profile; it is not a divergence finding. Unknown tenant state is intentionally outside this MVP.</p></aside>
-          </section>
-        )}
+          {isDomain(activeSection) && (
+            <section className="domain-workspace" aria-labelledby="domain-heading">
+              <header className="content-heading">
+                <div>
+                  <span className="section-kicker">Current domain</span>
+                  <h1 data-workspace-focus="section" id="domain-heading" tabIndex={-1}>{activeSection}</h1>
+                </div>
+                <div className="heading-actions">
+                  <button className="link-button" onClick={() => setDomainView((current) => current === "guided" ? "list" : "guided")} type="button">
+                    {domainView === "guided" ? "View all decisions" : "Guide me through decisions"}
+                  </button>
+                  <button
+                    className="button button--secondary"
+                    disabled={remainingRecommendations.length === 0}
+                    onClick={acceptRemainingRecommendations}
+                    type="button"
+                  >
+                    Accept remaining recommendations ({remainingRecommendations.length})
+                  </button>
+                </div>
+              </header>
 
-        {step === 2 && (
-          <section className="form-section" aria-labelledby="configure-heading">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow">Step 3 · Configure</span>
-                <h2 id="configure-heading">Tailor recommended values with the tradeoffs in view.</h2>
-              </div>
-              <p>{catalog.length} typed decisions across enterprise governance, security, Actions, audit, and Copilot.</p>
-            </div>
-            <div className="config-note"><strong>Recommended</strong> means this plan’s preselected desired value. Selecting another value records a deliberate override; it does not diagnose a live tenant.</div>
-            <div className="settings-list">
-              {settings.map((item) => <SettingCard item={item} key={item.setting.id} onChange={(id, value) => setSelections((current) => ({ ...current, [id]: value }))} />)}
-            </div>
-          </section>
-        )}
+              {domainView === "guided" && activeItem && (
+                <GuidedDecision
+                  index={activeIndex}
+                  item={activeItem}
+                  onChange={(value) => selectDecisionValue(activeItem.setting.id, value)}
+                  onNext={saveAndContinue}
+                  onPrevious={goToPreviousDecision}
+                  reviewed={isReviewed(activeItem, reviewed)}
+                  total={activeDomainItems.length}
+                />
+              )}
 
-        {step === 3 && <Review currentState={profile.currentState} onDownloadJson={() => download("github-enterprise-desired-state.json", JSON.stringify(exportObject(plan, settings), null, 2), "application/json")} onDownloadMarkdown={() => download("github-enterprise-desired-state.md", buildMarkdown(plan, settings), "text/markdown")} settings={settings} />}
+              {domainView === "list" && (
+                <DecisionList
+                  items={activeDomainItems}
+                  onOpen={(settingId) => {
+                    setActiveSettingId(settingId)
+                    setDomainView("guided")
+                  }}
+                  reviewed={reviewed}
+                />
+              )}
+            </section>
+          )}
 
-        <footer className="workflow-controls">
-          <button className="button button--secondary" disabled={step === 0} onClick={() => setStep((current) => current - 1)} type="button">Back</button>
-          {step < steps.length - 1 ? <button className="button" disabled={!canMoveNext} onClick={() => setStep((current) => current + 1)} type="button">Next: {steps[step + 1]}</button> : <button className="button" onClick={reset} type="button">Start a new plan</button>}
-        </footer>
-      </main>
-      <footer className="site-footer">Public static MVP · desired state only · no sign-in, tenant connection, or direct apply</footer>
+          {activeSection === "review" && (
+            <Review
+              currentState={profile.currentState}
+              onDownloadJson={downloadJson}
+              onDownloadMarkdown={downloadMarkdown}
+              reviewedCount={reviewedCount}
+              settings={settings}
+            />
+          )}
+        </main>
+
+        <aside className="context-panel">
+          {activeSection === "profile" && <ProfileContext />}
+          {isDomain(activeSection) && activeItem && <DecisionContext item={activeItem} />}
+          {activeSection === "review" && <ReviewContext />}
+        </aside>
+      </div>
+
+      <footer className="site-footer">
+        <span>Public static MVP · desired state only</span>
+        <button className="link-button" onClick={reset} type="button">Reset plan</button>
+      </footer>
     </div>
+  )
+}
+
+interface ProfileEditorProps {
+  profile: Profile
+  priorities: PriorityId[]
+  warnings: string[]
+  applicableCount: number
+  onProfileValueChange: <K extends ProfileKey>(key: K, value: Profile[K]) => void
+  onEntitlementChange: (entitlement: Entitlement) => void
+  onProductChange: (product: ProductId, enabled: boolean) => void
+  onPriorityToggle: (priority: PriorityId) => void
+  onBuild: () => void
+}
+
+function ProfileEditor({
+  profile,
+  priorities,
+  warnings,
+  applicableCount,
+  onProfileValueChange,
+  onEntitlementChange,
+  onProductChange,
+  onPriorityToggle,
+  onBuild,
+}: ProfileEditorProps) {
+  return (
+    <section className="profile-editor" aria-labelledby="profile-heading">
+      <header className="content-heading content-heading--intro">
+        <div>
+          <span className="section-kicker">Target profile</span>
+          <h1 data-workspace-focus="section" id="profile-heading" tabIndex={-1}>Name the environment you are planning for.</h1>
+          <p>The configurator builds a recommended path from this desired target. It does not inspect a live tenant.</p>
+        </div>
+      </header>
+
+      <div className="profile-fields">
+        <SelectField
+          label="Platform and hosting"
+          onChange={(value) => onProfileValueChange("platform", value as Platform)}
+          options={[["dotcom", "GitHub.com"], ["residency", "GHE.com data residency"], ["ghes", "GHES 3.21"]]}
+          value={profile.platform}
+        />
+        <SelectField
+          label="Identity model"
+          onChange={(value) => onProfileValueChange("identity", value as IdentityModel)}
+          options={[["personal", "Personal accounts"], ["emu", "Enterprise Managed Users (EMU)"]]}
+          value={profile.identity}
+        />
+        <SelectField
+          label="Entitlement"
+          onChange={(value) => onEntitlementChange(value as Entitlement)}
+          options={[["enterprise", "Full enterprise"], ["copilot", "Copilot-only"]]}
+          value={profile.entitlement}
+        />
+        <SelectField
+          label="Current state"
+          onChange={(value) => onProfileValueChange("currentState", value as CurrentState)}
+          options={[["greenfield", "Greenfield"], ["existing", "Existing environment"], ["migration", "Migration"], ["unknown", "Unknown / discovery needed"]]}
+          value={profile.currentState}
+        />
+      </div>
+
+      <fieldset className="flat-fieldset">
+        <legend>Enabled products</legend>
+        <p>Only relevant domains and decisions will appear in your path.</p>
+        <div className="check-list check-list--products">
+          {(Object.keys(productLabels) as ProductId[]).map((product) => (
+            <label key={product}>
+              <input
+                checked={profile.products[product]}
+                disabled={profile.entitlement === "copilot" && product !== "copilot"}
+                onChange={(event) => onProductChange(product, event.target.checked)}
+                type="checkbox"
+              />
+              <span>{productLabels[product]}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset className="flat-fieldset">
+        <legend>Planning priorities</legend>
+        <p>Priorities adjust a small number of recommendations; they do not create a score or compliance claim.</p>
+        <div className="check-list">
+          {priorityOptions.map((priority) => (
+            <label key={priority.id}>
+              <input
+                checked={priorities.includes(priority.id)}
+                onChange={() => onPriorityToggle(priority.id)}
+                type="checkbox"
+              />
+              <span>
+                <strong>{priority.label}</strong>
+                <small>{priority.description}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      {warnings.length > 0 && (
+        <div className="validation-notice" role="alert">
+          <strong>Resolve this profile before continuing</strong>
+          <ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+        </div>
+      )}
+
+      <footer className="profile-actions">
+        <span>{applicableCount} decisions will be included in this path.</span>
+        <button className="button button--primary" disabled={warnings.length > 0} onClick={onBuild} type="button">
+          Build recommended plan
+        </button>
+      </footer>
+    </section>
+  )
+}
+
+interface GuidedDecisionProps {
+  item: RecommendedSetting
+  index: number
+  total: number
+  reviewed: boolean
+  onChange: (value: string) => void
+  onPrevious: () => void
+  onNext: () => void
+}
+
+function GuidedDecision({ item, index, total, reviewed, onChange, onPrevious, onNext }: GuidedDecisionProps) {
+  const { setting, selected, recommended, disposition } = item
+  return (
+    <div className="guided-decision">
+      <div className="decision-progress">
+        <span>Decision {index + 1} of {total}</span>
+        <span>{reviewed ? "Reviewed" : "Not reviewed"}</span>
+        <div className="progress-track" role="progressbar" aria-label={`${index + 1} of ${total} decisions`} aria-valuemin={0} aria-valuemax={total} aria-valuenow={index + 1}>
+          <span style={{ width: `${(index + 1) / total * 100}%` }} />
+        </div>
+      </div>
+
+      <article className="decision-document">
+        <span className="section-kicker">{setting.title}</span>
+        <h2 data-workspace-focus="decision" tabIndex={-1}>{setting.prompt}</h2>
+        <p className="decision-lede">Choose the desired value for this plan. The current recommendation reflects your target profile and selected priorities.</p>
+        {setting.editable === false && <p className="derived-note">This value is derived from the target profile.</p>}
+        <ChoiceGroup
+          choices={setting.choices}
+          disabled={setting.editable === false}
+          label={setting.title}
+          name={setting.id}
+          onChange={onChange}
+          recommended={recommended}
+          value={selected}
+        />
+        <div className="selection-summary">
+          <span>Current disposition</span>
+          <strong>{disposition}</strong>
+        </div>
+        <footer className="decision-actions">
+          <button className="link-button" disabled={index === 0} onClick={onPrevious} type="button">← Previous</button>
+          <button
+            className="button button--primary"
+            onClick={(event) => {
+              if (event.detail > 1) return
+              onNext()
+            }}
+            type="button"
+          >
+            {setting.editable === false ? "Continue" : "Save and continue"}
+          </button>
+        </footer>
+      </article>
+    </div>
+  )
+}
+
+interface DecisionListProps {
+  items: RecommendedSetting[]
+  reviewed: Record<string, boolean>
+  onOpen: (settingId: string) => void
+}
+
+function DecisionList({ items, reviewed, onOpen }: DecisionListProps) {
+  return (
+    <div className="decision-list">
+      <div className="decision-list__header">
+        <span>Decision</span>
+        <span>Desired value</span>
+        <span>Status</span>
+      </div>
+      {items.map((item) => (
+        <button className="decision-list__row" key={item.setting.id} onClick={() => onOpen(item.setting.id)} type="button">
+          <span>
+            <strong>{item.setting.title}</strong>
+            <small>{item.setting.prompt}</small>
+          </span>
+          <span>{choiceLabel(item)}</span>
+          <span className={isReviewed(item, reviewed) ? "review-state review-state--complete" : "review-state"}>
+            {item.setting.editable === false ? "Derived" : isReviewed(item, reviewed) ? "Reviewed" : "Review"}
+          </span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ProfileContext() {
+  return (
+    <>
+      <section>
+        <h2>How your path is built</h2>
+        <p>The path is deterministic: profile rules filter the catalog, applicable decisions stay in a fixed domain order, and derived decisions count as reviewed automatically.</p>
+      </section>
+      <section>
+        <h2>What “reviewed” means</h2>
+        <p>A recommendation is not treated as accepted until you save it or explicitly accept the remaining recommendations in that domain.</p>
+      </section>
+      <section>
+        <h2>Boundary</h2>
+        <p>Unknown tenant state is not converted into a gap. This remains a desired-state planning tool.</p>
+      </section>
+    </>
+  )
+}
+
+function DecisionContext({ item }: { item: RecommendedSetting }) {
+  const { setting, recommended } = item
+  return (
+    <>
+      <section>
+        <h2>Why this matters</h2>
+        <p>{setting.rationale}</p>
+      </section>
+      <section>
+        <h2>Tradeoff</h2>
+        <p>{setting.tradeoff}</p>
+      </section>
+      <section>
+        <h2>What this changes</h2>
+        <p>{setting.consequences}</p>
+      </section>
+      <section>
+        <h2>Before applying</h2>
+        <p>{setting.prerequisites}</p>
+      </section>
+      <section>
+        <h2>Plan impact</h2>
+        <dl>
+          <div><dt>Recommended value</dt><dd>{choiceLabel(item, recommended)}</dd></div>
+          <div><dt>Control influence</dt><dd>{setting.influence}</dd></div>
+          <div><dt>Rollout effort</dt><dd>{setting.rolloutBand}</dd></div>
+          <div><dt>Ongoing effort</dt><dd>{setting.ongoingBand}</dd></div>
+          <div><dt>Scope</dt><dd>{setting.scope}</dd></div>
+          <div><dt>Responsible role</dt><dd>{setting.role}</dd></div>
+          <div><dt>Apply method</dt><dd>{setting.applyMethod}</dd></div>
+        </dl>
+      </section>
+      <section>
+        <h2>Sources</h2>
+        <ul className="context-sources">
+          {setting.sources.map((source) => (
+            <li key={source.url}>
+              <a href={source.url} rel="noreferrer" target="_blank">{source.label}</a>
+              <span>{source.tier}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </>
+  )
+}
+
+function ReviewContext() {
+  return (
+    <>
+      <section>
+        <h2>Relative, not a grade</h2>
+        <p>Domain profiles compare control influence and effort inside this catalog. They do not measure tenant adherence or predict security outcomes.</p>
+      </section>
+      <section>
+        <h2>Export boundary</h2>
+        <p>JSON is a desired-state contract for future adapters. Markdown is intended for review and decision records. Neither applies settings.</p>
+      </section>
+    </>
   )
 }
 
@@ -180,7 +703,14 @@ interface SelectFieldProps {
 }
 
 function SelectField({ label, value, options, onChange }: SelectFieldProps) {
-  return <label className="select-field"><span>{label}</span><select onChange={(event) => onChange(event.target.value)} value={value}>{options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}</select></label>
+  return (
+    <label className="select-field">
+      <span>{label}</span>
+      <select onChange={(event) => onChange(event.target.value)} value={value}>
+        {options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}
+      </select>
+    </label>
+  )
 }
 
 export default App

@@ -79,6 +79,7 @@ export interface Plan {
 
 export interface RecommendedSetting {
   setting: Setting
+  recommended: string
   selected: string
   disposition: "Recommended" | "Override" | "Not applicable"
 }
