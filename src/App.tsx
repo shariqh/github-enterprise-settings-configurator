@@ -97,6 +97,8 @@ function App() {
   const [activeSection, setActiveSection] = useState<ActiveSection>("profile")
   const [activeSettingId, setActiveSettingId] = useState<string | null>(null)
   const [domainView, setDomainView] = useState<DomainView>("guided")
+  const [pathMenuOpen, setPathMenuOpen] = useState(false)
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false)
   const [planNotice, setPlanNotice] = useState<PlanNotice | null>(() => {
     if (!cachedPlan.ok) return { kind: "error", message: cachedPlan.error }
     if (cachedPlan.value) return { kind: "success", message: "Restored your local draft." }
@@ -109,6 +111,10 @@ function App() {
   })
   const importInputRef = useRef<HTMLInputElement>(null)
   const workspaceRef = useRef<HTMLElement>(null)
+  const pathMenuRef = useRef<HTMLDivElement>(null)
+  const pathMenuToggleRef = useRef<HTMLButtonElement>(null)
+  const actionsMenuRef = useRef<HTMLDivElement>(null)
+  const actionsMenuToggleRef = useRef<HTMLButtonElement>(null)
   const focusReady = useRef(false)
 
   const plan: Plan = { profile, intent, priorities, selections }
@@ -130,6 +136,11 @@ function App() {
   const warnings = getProfileWarnings(profile)
   const profileValid = isProfileValid(profile)
   const reviewedCount = applicableSettings.filter((item) => isReviewed(item, reviewed)).length
+  const activeSectionLabel = activeSection === "profile"
+    ? "Target profile"
+    : activeSection === "review"
+      ? "Review and export"
+      : activeSection
 
   const activeDomainItems = isDomain(activeSection)
     ? settingsByDomain.find((group) => group.domain === activeSection)?.items ?? []
@@ -167,6 +178,29 @@ function App() {
       ? { kind: "info", message: "Saved locally in this browser." }
       : { kind: "error", message: saved.error })
   }, [persistenceFingerprint, persistentState])
+
+  useEffect(() => {
+    if (!pathMenuOpen && !actionsMenuOpen) return
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      if (actionsMenuOpen) actionsMenuToggleRef.current?.focus()
+      if (pathMenuOpen) pathMenuToggleRef.current?.focus()
+      setPathMenuOpen(false)
+      setActionsMenuOpen(false)
+    }
+    const closeOnPointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Node)) return
+      if (actionsMenuOpen && !actionsMenuRef.current?.contains(event.target)) setActionsMenuOpen(false)
+      if (pathMenuOpen && !pathMenuRef.current?.contains(event.target)) setPathMenuOpen(false)
+    }
+    window.addEventListener("keydown", closeOnEscape)
+    window.addEventListener("pointerdown", closeOnPointerDown)
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape)
+      window.removeEventListener("pointerdown", closeOnPointerDown)
+    }
+  }, [actionsMenuOpen, pathMenuOpen])
 
   const clearReviews = () => setReviewed({})
 
@@ -224,6 +258,8 @@ function App() {
     setActiveSection(domain)
     setActiveSettingId(target?.setting.id ?? null)
     setDomainView("guided")
+    setPathMenuOpen(false)
+    setActionsMenuOpen(false)
   }
 
   const buildPlan = () => {
@@ -233,6 +269,8 @@ function App() {
   }
 
   const navigateTo = (section: ActiveSection) => {
+    setPathMenuOpen(false)
+    setActionsMenuOpen(false)
     if (section !== "profile" && !profileValid) {
       setActiveSection("profile")
       return
@@ -328,6 +366,8 @@ function App() {
     setActiveSection("profile")
     setActiveSettingId(null)
     setDomainView("guided")
+    setPathMenuOpen(false)
+    setActionsMenuOpen(false)
     if (importInputRef.current) importInputRef.current.value = ""
     setPlanNotice(cleared.ok
       ? { kind: "success", message: "Plan reset to defaults and the local draft was cleared." }
@@ -410,7 +450,7 @@ function App() {
           <span>{platformLabels[profile.platform]} / {identityLabels[profile.identity]} / {entitlementLabels[profile.entitlement]}</span>
         </div>
         <div className="topbar__actions">
-          <button className="link-button" onClick={() => navigateTo("profile")} type="button">Edit profile</button>
+          <button className="link-button topbar__utility-action" onClick={() => navigateTo("profile")} type="button">Edit profile</button>
           <input
             accept=".json,application/json"
             aria-label="Import plan JSON"
@@ -419,8 +459,46 @@ function App() {
             ref={importInputRef}
             type="file"
           />
-          <button className="link-button" onClick={() => importInputRef.current?.click()} type="button">Import JSON</button>
-          <button className="link-button" onClick={reset} type="button">Reset plan</button>
+          <button className="link-button topbar__utility-action" onClick={() => importInputRef.current?.click()} type="button">Import JSON</button>
+          <button className="link-button topbar__utility-action" onClick={reset} type="button">Reset plan</button>
+          <div className="topbar-menu" ref={actionsMenuRef}>
+            <button
+              aria-controls="mobile-plan-actions"
+              aria-expanded={actionsMenuOpen}
+              aria-label="More plan actions"
+              className="topbar-menu__toggle"
+              onClick={() => {
+                setActionsMenuOpen((current) => !current)
+                setPathMenuOpen(false)
+              }}
+              ref={actionsMenuToggleRef}
+              type="button"
+            >
+              <span aria-hidden="true">•••</span>
+              <span className="sr-only">More plan actions</span>
+            </button>
+            {actionsMenuOpen && (
+              <div aria-label="Plan actions" className="topbar-menu__panel" id="mobile-plan-actions" role="group">
+                <button onClick={() => navigateTo("profile")} type="button">Edit profile</button>
+                <button
+                  onClick={() => {
+                    setActionsMenuOpen(false)
+                    importInputRef.current?.click()
+                  }}
+                  type="button"
+                >
+                  Import JSON
+                </button>
+                <button
+                  className="topbar-menu__danger"
+                  onClick={reset}
+                  type="button"
+                >
+                  Reset plan
+                </button>
+              </div>
+            )}
+          </div>
           <button className="button button--secondary" disabled={!profileValid} onClick={() => navigateTo("review")} type="button">Review and export</button>
         </div>
       </header>
@@ -436,46 +514,66 @@ function App() {
       )}
 
       <div className="workbench">
-        <nav className="path-nav" aria-label="Plan path">
-          <h2>Your path</h2>
+        <div className={`path-navigation ${pathMenuOpen ? "path-navigation--open" : ""}`} ref={pathMenuRef}>
           <button
-            aria-current={activeSection === "profile" ? "step" : undefined}
-            className={`path-item ${activeSection === "profile" ? "path-item--active" : ""}`}
-            onClick={() => navigateTo("profile")}
+            aria-controls="plan-path"
+            aria-expanded={pathMenuOpen}
+            className="mobile-path-toggle"
+            onClick={() => {
+              setPathMenuOpen((current) => !current)
+              setActionsMenuOpen(false)
+            }}
+            ref={pathMenuToggleRef}
             type="button"
           >
-            <span>Target profile</span>
-            <small>{warnings.length ? "Needs attention" : "Ready"}</small>
+            <span className="mobile-path-toggle__copy">
+              <small>Your path</small>
+              <strong>{activeSectionLabel}</strong>
+            </span>
+            <span className="mobile-path-toggle__progress">{reviewedCount} / {reviewableSettings.length} reviewed</span>
+            <span aria-hidden="true" className="mobile-path-toggle__chevron" />
           </button>
-          {settingsByDomain.map(({ domain, items }) => {
-            const reviewableItems = items.filter((item) => item.setting.editable !== false)
-            const complete = reviewableItems.filter((item) => isReviewed(item, reviewed)).length
-            const domainComplete = complete === reviewableItems.length
-            return (
-              <button
-                aria-current={activeSection === domain ? "step" : undefined}
-                className={`path-item ${activeSection === domain ? "path-item--active" : ""} ${domainComplete ? "path-item--complete" : ""}`}
-                disabled={!profileValid}
-                key={domain}
-                onClick={() => navigateTo(domain)}
-                type="button"
-              >
-                <span>{domain}</span>
-                <small>{domainComplete ? `✓ ${complete} reviewed` : `${complete} of ${reviewableItems.length} reviewed`}</small>
-              </button>
-            )
-          })}
-          <button
-            aria-current={activeSection === "review" ? "step" : undefined}
-            className={`path-item path-item--review ${activeSection === "review" ? "path-item--active" : ""}`}
-            disabled={!profileValid}
-            onClick={() => navigateTo("review")}
-            type="button"
-          >
-            <span>Review and export</span>
-            <small>{reviewedCount} of {reviewableSettings.length} reviewed</small>
-          </button>
-        </nav>
+          <nav className="path-nav" id="plan-path" aria-label="Plan path">
+            <h2>Your path</h2>
+            <button
+              aria-current={activeSection === "profile" ? "step" : undefined}
+              className={`path-item ${activeSection === "profile" ? "path-item--active" : ""}`}
+              onClick={() => navigateTo("profile")}
+              type="button"
+            >
+              <span>Target profile</span>
+              <small>{warnings.length ? "Needs attention" : "Ready"}</small>
+            </button>
+            {settingsByDomain.map(({ domain, items }) => {
+              const reviewableItems = items.filter((item) => item.setting.editable !== false)
+              const complete = reviewableItems.filter((item) => isReviewed(item, reviewed)).length
+              const domainComplete = complete === reviewableItems.length
+              return (
+                <button
+                  aria-current={activeSection === domain ? "step" : undefined}
+                  className={`path-item ${activeSection === domain ? "path-item--active" : ""} ${domainComplete ? "path-item--complete" : ""}`}
+                  disabled={!profileValid}
+                  key={domain}
+                  onClick={() => navigateTo(domain)}
+                  type="button"
+                >
+                  <span>{domain}</span>
+                  <small>{domainComplete ? `✓ ${complete} reviewed` : `${complete} of ${reviewableItems.length} reviewed`}</small>
+                </button>
+              )
+            })}
+            <button
+              aria-current={activeSection === "review" ? "step" : undefined}
+              className={`path-item path-item--review ${activeSection === "review" ? "path-item--active" : ""}`}
+              disabled={!profileValid}
+              onClick={() => navigateTo("review")}
+              type="button"
+            >
+              <span>Review and export</span>
+              <small>{reviewedCount} of {reviewableSettings.length} reviewed</small>
+            </button>
+          </nav>
+        </div>
 
         <main className="workspace-main" ref={workspaceRef}>
           {activeSection === "profile" && (
