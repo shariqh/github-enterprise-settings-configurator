@@ -1,10 +1,10 @@
-import type { RecommendedSetting, Setting } from "../types"
+import type { Domain, RecommendedSetting, Setting } from "../types"
 
 type Band = "Low" | "Moderate" | "High"
 type Influence = "Protective" | "Enabling" | "Guardrail"
 
 export interface DomainProfile {
-  domain: string
+  domain: Domain
   posture: number
   postureLabel: "Lower" | "Moderate" | "Higher"
   foundationLimited: boolean
@@ -14,35 +14,51 @@ export interface DomainProfile {
   ongoingBand: Band
 }
 
+export interface ChoiceImpact {
+  control: number
+  rollout: number
+  ongoing: number
+}
+
 const bandValue: Record<Band, number> = { Low: 1, Moderate: 2, High: 3 }
 const influenceWeight: Record<Influence, number> = { Protective: 3, Guardrail: 2, Enabling: 1 }
 
-function choiceStrength(setting: Setting, selected: string): number {
+export function choiceStrength(setting: Setting, selected: string): number {
   const index = setting.choices.findIndex((choice) => choice.id === selected)
   if (index < 0) return 0
   if (setting.choices.length === 1) return 1
   return 1 - index / (setting.choices.length - 1)
 }
 
-function effortFactor(setting: Setting, selected: string): number {
+export function effortFactor(setting: Setting, selected: string): number {
   const explicit = setting.effortByChoice?.[selected]
   return explicit ?? 0.2 + choiceStrength(setting, selected) * 0.8
 }
 
-function toPostureLabel(value: number): DomainProfile["postureLabel"] {
+export function toPostureLabel(value: number): DomainProfile["postureLabel"] {
   if (value < 0.35) return "Lower"
   if (value < 0.7) return "Moderate"
   return "Higher"
 }
 
-function toBand(value: number): Band {
+export function toBand(value: number): Band {
   if (value < 0.34) return "Low"
   if (value < 0.68) return "Moderate"
   return "High"
 }
 
+export function getChoiceImpact(setting: Setting, selected: string): ChoiceImpact {
+  const controlWeight = setting.postureWeight ?? influenceWeight[setting.influence]
+  const effort = effortFactor(setting, selected)
+  return {
+    control: controlWeight === 0 ? 0 : choiceStrength(setting, selected),
+    rollout: bandValue[setting.rolloutBand] / 3 * effort,
+    ongoing: bandValue[setting.ongoingBand] / 3 * effort,
+  }
+}
+
 export const buildDomainProfiles = (settings: RecommendedSetting[]): DomainProfile[] => {
-  const groups = new Map<string, RecommendedSetting[]>()
+  const groups = new Map<Domain, RecommendedSetting[]>()
   settings
     .filter((item) => item.disposition !== "Not applicable")
     .forEach((item) => groups.set(item.setting.domain, [...(groups.get(item.setting.domain) ?? []), item]))

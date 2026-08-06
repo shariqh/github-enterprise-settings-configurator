@@ -11,6 +11,8 @@ export type PriorityId =
   | "migration-ready"
 
 export type ProductId = "actions" | "security" | "copilot" | "audit"
+export type IntentLevel = 0 | 1 | 2
+export type IntentAxis = "guardrailStrength" | "rolloutPace" | "operationalCapacity"
 export type Domain =
   | "Identity & administration"
   | "Organization & repository governance"
@@ -46,6 +48,12 @@ export interface Profile {
   products: Record<ProductId, boolean>
 }
 
+export interface PlanIntent {
+  guardrailStrength: IntentLevel
+  rolloutPace: IntentLevel
+  operationalCapacity: IntentLevel
+}
+
 export interface Setting {
   id: string
   domain: Domain
@@ -73,12 +81,14 @@ export interface Setting {
 
 export interface Plan {
   profile: Profile
+  intent: PlanIntent
   priorities: PriorityId[]
   selections: Record<string, string>
 }
 
 export interface RecommendedSetting {
   setting: Setting
+  recommended: string
   selected: string
   disposition: "Recommended" | "Override" | "Not applicable"
 }

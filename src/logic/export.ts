@@ -1,14 +1,23 @@
 import { priorityOptions, productLabels } from "../catalog"
+import { buildPlanSignature, intentAxes, intentAxisDefinitions, intentLabel } from "./intent"
 import { buildDomainProfiles } from "./scoring"
 import type { Plan, RecommendedSetting } from "../types"
 
 const date = () => new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date())
 
-export const exportObject = (plan: Plan, settings: RecommendedSetting[]) => ({
+export const exportObject = (
+  plan: Plan,
+  settings: RecommendedSetting[],
+  reviewedSettingIds: string[] = [],
+) => ({
+  schemaVersion: 1,
   generatedAt: new Date().toISOString(),
   scope: "Desired-state configurator plan; not observed tenant state.",
   profile: plan.profile,
+  intent: plan.intent,
+  planSignature: buildPlanSignature(plan.intent, settings),
   priorities: plan.priorities,
+  reviewedSettingIds,
   domainProfiles: buildDomainProfiles(settings),
   settings: settings.map(({ setting, selected, disposition }) => ({
     id: setting.id,
@@ -27,6 +36,7 @@ export const buildMarkdown = (plan: Plan, settings: RecommendedSetting[]): strin
   const profile = plan.profile
   const selected = settings.filter((item) => item.disposition !== "Not applicable")
   const profiles = buildDomainProfiles(settings)
+  const signature = buildPlanSignature(plan.intent, settings)
   const lines = [
     "# GitHub Enterprise Settings Configurator",
     "",
@@ -38,6 +48,11 @@ export const buildMarkdown = (plan: Plan, settings: RecommendedSetting[]): strin
     `- Entitlement: ${profile.entitlement}`,
     `- Current state: ${profile.currentState}`,
     `- Products: ${(Object.keys(profile.products) as (keyof typeof productLabels)[]).filter((product) => profile.products[product]).map((product) => productLabels[product]).join(", ") || "none"}`,
+    "",
+    "## Planning intent",
+    ...intentAxes.map((axis) => `- ${intentAxisDefinitions[axis].label}: ${intentLabel(axis, plan.intent[axis])}`),
+    `- Plan signature: ${signature.headline}`,
+    `- Interpretation: ${signature.narrative}`,
     "",
     "## Priorities",
     ...(plan.priorities.length ? plan.priorities.map((priority) => `- ${priorityOptions.find((option) => option.id === priority)?.label ?? priority}`) : ["- No additional priority selected"]),
