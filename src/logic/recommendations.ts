@@ -1,10 +1,13 @@
 import { catalog } from "../catalog"
-import type { Plan, Profile, RecommendedSetting, Setting } from "../types"
+import type { IntentLevel, Plan, Profile, RecommendedSetting, Setting } from "../types"
 
-const recommendationFor = (setting: Setting, plan: Plan): string => {
+const requiresEmuProvisioning = (setting: Setting, plan: Plan): boolean =>
+  setting.id === "sso-scim" && plan.profile.identity === "emu"
+
+const baseRecommendationFor = (setting: Setting, plan: Plan): string => {
   const { profile, priorities } = plan
   if (setting.id === "enterprise-type") return profile.platform
-  if (setting.id === "sso-scim" && profile.identity === "emu") return "saml-scim"
+  if (requiresEmuProvisioning(setting, plan)) return "saml-scim"
   if (setting.id === "verified-domains" && profile.currentState === "migration") return "verify-migration"
   if (setting.id === "workflow-token" && profile.currentState === "migration") return "migration"
   if (priorities.includes("security-rollout") && setting.id === "security-configuration") return "wave"
@@ -14,6 +17,30 @@ const recommendationFor = (setting: Setting, plan: Plan): string => {
   if (priorities.includes("copilot-cost") && setting.id === "included-usage-cap") return "cap-overage"
   if (priorities.includes("migration-ready") && setting.id === "default-branch-ruleset") return "pr-only"
   return setting.recommended
+}
+
+const intentDirection = (level: IntentLevel): number => 1 - level
+
+const recommendationFor = (setting: Setting, plan: Plan): string => {
+  const baseRecommendation = baseRecommendationFor(setting, plan)
+  if (setting.editable === false || requiresEmuProvisioning(setting, plan)) return baseRecommendation
+
+  const baseIndex = setting.choices.findIndex((choice) => choice.id === baseRecommendation)
+  if (baseIndex < 0) return baseRecommendation
+
+  const guardrailDirection = intentDirection(plan.intent.guardrailStrength) * 2
+  const rolloutDirection = setting.rolloutBand === "High"
+    ? intentDirection(plan.intent.rolloutPace)
+    : 0
+  const capacityDirection = setting.ongoingBand === "High"
+    ? intentDirection(plan.intent.operationalCapacity)
+    : 0
+  const combinedDirection = guardrailDirection + rolloutDirection + capacityDirection
+  if (combinedDirection === 0) return baseRecommendation
+
+  const choiceOffset = combinedDirection > 0 ? 1 : -1
+  const adjustedIndex = Math.max(0, Math.min(setting.choices.length - 1, baseIndex + choiceOffset))
+  return setting.choices[adjustedIndex].id
 }
 
 export const getRecommendedSettings = (plan: Plan): RecommendedSetting[] =>

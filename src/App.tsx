@@ -1,14 +1,32 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import type { ChangeEvent } from "react"
 import { priorityOptions, productLabels } from "./catalog"
 import { ChoiceGroup } from "./components/ChoiceGroup"
 import { Review } from "./components/Review"
+import {
+  DecisionImpact,
+  DomainLandscape,
+  IntentControls,
+  PlanSignature,
+} from "./components/VisualPlanning"
 import { buildMarkdown, download, exportObject } from "./logic/export"
+import { defaultIntent } from "./logic/intent"
+import {
+  clearCachedPlan,
+  parseImportedPlan,
+  readCachedPlan,
+  saveCachedPlan,
+} from "./logic/persistence"
 import { getProfileWarnings, getRecommendedSettings, isProfileValid } from "./logic/recommendations"
 import type {
   CurrentState,
   Domain,
   Entitlement,
   IdentityModel,
+  IntentAxis,
+  IntentLevel,
+  Plan,
+  PlanIntent,
   Platform,
   PriorityId,
   ProductId,
@@ -54,6 +72,7 @@ const entitlementLabels: Record<Entitlement, string> = {
 type ActiveSection = "profile" | "review" | Domain
 type DomainView = "guided" | "list"
 type ProfileKey = keyof Omit<Profile, "products">
+type PlanNotice = { kind: "error" | "info" | "success"; message: string }
 
 const isDomain = (section: ActiveSection): section is Domain =>
   domainOrder.includes(section as Domain)
@@ -65,18 +84,37 @@ const choiceLabel = (item: RecommendedSetting, choiceId = item.selected): string
   item.setting.choices.find((choice) => choice.id === choiceId)?.label ?? choiceId
 
 function App() {
-  const [profile, setProfile] = useState<Profile>(initialProfile)
-  const [priorities, setPriorities] = useState<PriorityId[]>(["secure-ghec"])
-  const [selections, setSelections] = useState<Record<string, string>>({})
-  const [reviewed, setReviewed] = useState<Record<string, boolean>>({})
+  const [cachedPlan] = useState(readCachedPlan)
+  const restoredPlan = cachedPlan.ok ? cachedPlan.value : null
+  const [profile, setProfile] = useState<Profile>(restoredPlan?.profile ?? initialProfile)
+  const [intent, setIntent] = useState<PlanIntent>(restoredPlan?.intent ?? defaultIntent)
+  const [priorities, setPriorities] = useState<PriorityId[]>(restoredPlan?.priorities ?? ["secure-ghec"])
+  const [selections, setSelections] = useState<Record<string, string>>(restoredPlan?.selections ?? {})
+  const [reviewed, setReviewed] = useState<Record<string, boolean>>(restoredPlan?.reviewed ?? {})
   const [activeSection, setActiveSection] = useState<ActiveSection>("profile")
   const [activeSettingId, setActiveSettingId] = useState<string | null>(null)
   const [domainView, setDomainView] = useState<DomainView>("guided")
-  const enterpriseProducts = useRef<Profile["products"]>({ ...initialProfile.products })
+  const [planNotice, setPlanNotice] = useState<PlanNotice | null>(() => {
+    if (!cachedPlan.ok) return { kind: "error", message: cachedPlan.error }
+    if (cachedPlan.value) return { kind: "success", message: "Restored your local draft." }
+    return null
+  })
+  const enterpriseProducts = useRef<Profile["products"]>({
+    ...(restoredPlan?.profile.entitlement === "enterprise"
+      ? restoredPlan.profile.products
+      : initialProfile.products),
+  })
+  const importInputRef = useRef<HTMLInputElement>(null)
   const workspaceRef = useRef<HTMLElement>(null)
   const focusReady = useRef(false)
 
-  const plan = { profile, priorities, selections }
+  const plan: Plan = { profile, intent, priorities, selections }
+  const persistentState = useMemo(
+    () => ({ profile, intent, priorities, selections, reviewed }),
+    [profile, intent, priorities, selections, reviewed],
+  )
+  const persistenceFingerprint = JSON.stringify(persistentState)
+  const lastPersistedFingerprint = useRef(persistenceFingerprint)
   const settings = getRecommendedSettings(plan)
   const applicableSettings = settings.filter((item) => item.disposition !== "Not applicable")
   const settingsByDomain = domainOrder
@@ -111,6 +149,16 @@ function App() {
       : workspaceRef.current?.querySelector<HTMLElement>('[data-workspace-focus="section"]')
     focusTarget?.focus()
   }, [activeSection, activeSettingId, domainView])
+
+  useEffect(() => {
+    if (persistenceFingerprint === lastPersistedFingerprint.current) return
+
+    const saved = saveCachedPlan(persistentState)
+    if (saved.ok) lastPersistedFingerprint.current = persistenceFingerprint
+    setPlanNotice(saved.ok
+      ? { kind: "info", message: "Saved locally in this browser." }
+      : { kind: "error", message: saved.error })
+  }, [persistenceFingerprint, persistentState])
 
   const clearReviews = () => setReviewed({})
 
@@ -153,6 +201,11 @@ function App() {
         ? current.filter((id) => id !== priority)
         : [...current, priority],
     )
+  }
+
+  const setIntentValue = (axis: IntentAxis, value: IntentLevel) => {
+    clearReviews()
+    setIntent((current) => ({ ...current, [axis]: value }))
   }
 
   const openDomain = (domain: Domain, settingId?: string) => {
@@ -247,20 +300,89 @@ function App() {
   }
 
   const reset = () => {
+    const cleared = clearCachedPlan()
+    const defaultState = {
+      profile: initialProfile,
+      intent: defaultIntent,
+      priorities: ["secure-ghec"] as PriorityId[],
+      selections: {},
+      reviewed: {},
+    }
+    lastPersistedFingerprint.current = cleared.ok ? JSON.stringify(defaultState) : ""
     enterpriseProducts.current = { ...initialProfile.products }
     setProfile(initialProfile)
+    setIntent({ ...defaultIntent })
     setPriorities(["secure-ghec"])
     setSelections({})
     setReviewed({})
     setActiveSection("profile")
     setActiveSettingId(null)
     setDomainView("guided")
+    if (importInputRef.current) importInputRef.current.value = ""
+    setPlanNotice(cleared.ok
+      ? { kind: "success", message: "Plan reset to defaults and the local draft was cleared." }
+      : { kind: "error", message: cleared.error })
+  }
+
+  const importPlan = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0]
+    event.currentTarget.value = ""
+    if (!file) return
+
+    let contents: string
+    try {
+      contents = await file.text()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setPlanNotice({ kind: "error", message: `The selected file could not be read. ${message}` })
+      return
+    }
+
+    const imported = parseImportedPlan(contents)
+    if (!imported.ok) {
+      setPlanNotice({ kind: "error", message: imported.error })
+      return
+    }
+
+    const { state, importedSettingCount, usedDefaultIntent, restoredReviewState } = imported.value
+    const saved = saveCachedPlan(state)
+    if (saved.ok) lastPersistedFingerprint.current = JSON.stringify(state)
+    enterpriseProducts.current = {
+      ...(state.profile.entitlement === "enterprise" ? state.profile.products : initialProfile.products),
+    }
+    setProfile(state.profile)
+    setIntent(state.intent)
+    setPriorities(state.priorities)
+    setSelections(state.selections)
+    setReviewed(state.reviewed)
+    setActiveSection("profile")
+    setActiveSettingId(null)
+    setDomainView("guided")
+
+    const compatibilityNotes = [
+      usedDefaultIntent ? "Balanced planning intent was applied because this is an older export." : null,
+      restoredReviewState ? null : "Review completion restarted because the export did not contain review state.",
+    ].filter((note): note is string => note !== null)
+    const importMessage = `Imported ${importedSettingCount} setting${importedSettingCount === 1 ? "" : "s"}. ${compatibilityNotes.join(" ")}`
+    setPlanNotice(saved.ok
+      ? { kind: "success", message: importMessage.trim() }
+      : { kind: "error", message: `${importMessage} ${saved.error}`.trim() })
   }
 
   const downloadJson = () =>
     download(
       "github-enterprise-desired-state.json",
-      JSON.stringify(exportObject(plan, settings), null, 2),
+      JSON.stringify(
+        exportObject(
+          plan,
+          settings,
+          applicableSettings
+            .filter((item) => isReviewed(item, reviewed))
+            .map((item) => item.setting.id),
+        ),
+        null,
+        2,
+      ),
       "application/json",
     )
   const downloadMarkdown = () =>
@@ -279,9 +401,29 @@ function App() {
         </div>
         <div className="topbar__actions">
           <button className="link-button" onClick={() => navigateTo("profile")} type="button">Edit profile</button>
+          <input
+            accept=".json,application/json"
+            aria-label="Import plan JSON"
+            className="sr-only"
+            onChange={importPlan}
+            ref={importInputRef}
+            type="file"
+          />
+          <button className="link-button" onClick={() => importInputRef.current?.click()} type="button">Import JSON</button>
+          <button className="link-button" onClick={reset} type="button">Reset plan</button>
           <button className="button button--secondary" disabled={!profileValid} onClick={() => navigateTo("review")} type="button">Review and export</button>
         </div>
       </header>
+
+      {planNotice && (
+        <div
+          className={`plan-notice plan-notice--${planNotice.kind}`}
+          role={planNotice.kind === "error" ? "alert" : "status"}
+        >
+          <span>{planNotice.message}</span>
+          <button aria-label="Dismiss plan message" onClick={() => setPlanNotice(null)} type="button">×</button>
+        </div>
+      )}
 
       <div className="workbench">
         <nav className="path-nav" aria-label="Plan path">
@@ -327,13 +469,18 @@ function App() {
           {activeSection === "profile" && (
             <ProfileEditor
               applicableCount={applicableSettings.length}
+              intent={intent}
               onBuild={buildPlan}
               onEntitlementChange={setEntitlement}
+              onIntentChange={setIntentValue}
+              onOpenDomain={openDomain}
               onPriorityToggle={togglePriority}
               onProductChange={setProduct}
               onProfileValueChange={setProfileValue}
               priorities={priorities}
               profile={profile}
+              profileValid={profileValid}
+              settings={settings}
               warnings={warnings}
             />
           )}
@@ -388,8 +535,10 @@ function App() {
           {activeSection === "review" && (
             <Review
               currentState={profile.currentState}
+              intent={intent}
               onDownloadJson={downloadJson}
               onDownloadMarkdown={downloadMarkdown}
+              onOpenDomain={openDomain}
               reviewedCount={reviewedCount}
               settings={settings}
             />
@@ -405,7 +554,7 @@ function App() {
 
       <footer className="site-footer">
         <span>Public static MVP · desired state only</span>
-        <button className="link-button" onClick={reset} type="button">Reset plan</button>
+        <span>Drafts save locally in this browser.</span>
       </footer>
     </div>
   )
@@ -413,11 +562,16 @@ function App() {
 
 interface ProfileEditorProps {
   profile: Profile
+  intent: PlanIntent
   priorities: PriorityId[]
   warnings: string[]
   applicableCount: number
+  profileValid: boolean
+  settings: RecommendedSetting[]
   onProfileValueChange: <K extends ProfileKey>(key: K, value: Profile[K]) => void
   onEntitlementChange: (entitlement: Entitlement) => void
+  onIntentChange: (axis: IntentAxis, value: IntentLevel) => void
+  onOpenDomain: (domain: Domain) => void
   onProductChange: (product: ProductId, enabled: boolean) => void
   onPriorityToggle: (priority: PriorityId) => void
   onBuild: () => void
@@ -425,11 +579,16 @@ interface ProfileEditorProps {
 
 function ProfileEditor({
   profile,
+  intent,
   priorities,
   warnings,
   applicableCount,
+  profileValid,
+  settings,
   onProfileValueChange,
   onEntitlementChange,
+  onIntentChange,
+  onOpenDomain,
   onProductChange,
   onPriorityToggle,
   onBuild,
@@ -471,6 +630,11 @@ function ProfileEditor({
         />
       </div>
 
+      <div className="profile-intent">
+        <IntentControls intent={intent} onChange={onIntentChange} />
+        <PlanSignature intent={intent} settings={settings} />
+      </div>
+
       <fieldset className="flat-fieldset">
         <legend>Enabled products</legend>
         <p>Only relevant domains and decisions will appear in your path.</p>
@@ -508,6 +672,12 @@ function ProfileEditor({
           ))}
         </div>
       </fieldset>
+
+      <DomainLandscape
+        disabled={!profileValid}
+        onSelectDomain={onOpenDomain}
+        settings={settings}
+      />
 
       {warnings.length > 0 && (
         <div className="validation-notice" role="alert">
@@ -551,7 +721,7 @@ function GuidedDecision({ item, index, total, reviewed, onChange, onPrevious, on
       <article className="decision-document">
         <span className="section-kicker">{setting.title}</span>
         <h2 data-workspace-focus="decision" tabIndex={-1}>{setting.prompt}</h2>
-        <p className="decision-lede">Choose the desired value for this plan. The current recommendation reflects your target profile and selected priorities.</p>
+        <p className="decision-lede">Choose the desired value for this plan. The current recommendation reflects your target profile, planning intent, and selected priorities.</p>
         {setting.editable === false && <p className="derived-note">This value is derived from the target profile.</p>}
         <ChoiceGroup
           choices={setting.choices}
@@ -562,6 +732,7 @@ function GuidedDecision({ item, index, total, reviewed, onChange, onPrevious, on
           recommended={recommended}
           value={selected}
         />
+        <DecisionImpact item={item} />
         <div className="selection-summary">
           <span>Current disposition</span>
           <strong>{disposition}</strong>
@@ -619,7 +790,11 @@ function ProfileContext() {
     <>
       <section>
         <h2>How your path is built</h2>
-        <p>The path is deterministic: profile rules filter the catalog, applicable decisions stay in a fixed domain order, and derived decisions count as reviewed automatically.</p>
+        <p>The path is deterministic: profile rules filter the catalog, planning intent tunes recommendation strength and high-effort choices, and applicable decisions stay in a fixed domain order.</p>
+      </section>
+      <section>
+        <h2>How to read the visuals</h2>
+        <p>Sliders express preference. Charts compare relative control influence and effort inside this catalog; they do not inspect or grade a tenant.</p>
       </section>
       <section>
         <h2>What “reviewed” means</h2>

@@ -1,18 +1,29 @@
 import { buildDomainProfiles } from "../logic/scoring"
-import type { CurrentState, RecommendedSetting } from "../types"
+import { DomainLandscape, PlanSignature } from "./VisualPlanning"
+import type { CurrentState, Domain, PlanIntent, RecommendedSetting } from "../types"
 
 interface ReviewProps {
   settings: RecommendedSetting[]
+  intent: PlanIntent
   currentState: CurrentState
   reviewedCount: number
   onDownloadJson: () => void
   onDownloadMarkdown: () => void
+  onOpenDomain: (domain: Domain) => void
 }
 
 const choiceLabel = (item: RecommendedSetting): string =>
   item.setting.choices.find((choice) => choice.id === item.selected)?.label ?? item.selected
 
-export function Review({ settings, currentState, reviewedCount, onDownloadJson, onDownloadMarkdown }: ReviewProps) {
+export function Review({
+  settings,
+  intent,
+  currentState,
+  reviewedCount,
+  onDownloadJson,
+  onDownloadMarkdown,
+  onOpenDomain,
+}: ReviewProps) {
   const applicable = settings.filter((item) => item.disposition !== "Not applicable")
   const recommended = applicable.filter((item) => item.disposition === "Recommended")
   const overrides = applicable.filter((item) => item.disposition === "Override")
@@ -41,6 +52,11 @@ export function Review({ settings, currentState, reviewedCount, onDownloadJson, 
         <div><strong>{recommended.length}</strong><span>recommended values</span></div>
         <div><strong>{overrides.length}</strong><span>deliberate overrides</span></div>
         <div><strong>{notApplicable.length}</strong><span>not applicable</span></div>
+      </div>
+
+      <div className="review-visuals">
+        <PlanSignature intent={intent} settings={settings} />
+        <DomainLandscape onSelectDomain={onOpenDomain} settings={settings} />
       </div>
 
       <section className="review-section">

@@ -20,10 +20,12 @@ do not assume the deployed app is hosted at the domain root.
 ## Architecture
 
 This is a client-only React 19 + TypeScript decision assistant. It has no
-router, backend, authentication, tenant connection, or persistence. `App.tsx`
-owns the guided workbench state: target profile and priorities, the
-profile-filtered domain path, explicit per-setting review state, guided/list
-domain views, and review/export navigation.
+router, backend, authentication, or tenant connection. A versioned local draft
+in browser `localStorage` preserves target profile, planning intent, priorities,
+explicit selections, and review state; JSON import accepts current exports and
+older exports without planning-intent metadata. `App.tsx` owns the guided
+workbench state and delegates persistence validation to
+`src/logic/persistence.ts`.
 
 The domain flow is:
 
@@ -41,6 +43,9 @@ The domain flow is:
 5. `src/components/Review.tsx` renders those domain profiles, and
    `src/logic/export.ts` reuses the same calculations for JSON and Markdown
    exports. The browser creates downloads with `Blob` URLs.
+6. `src/logic/persistence.ts` validates cached and imported plan data against
+   the current profile, priority, setting, and choice contracts before applying
+   it. Do not trust raw local-storage or file-import values.
 
 `src/index.css` defines the Primer Light-based global `--cp-*` design tokens,
 focus treatment, and reduced-motion behavior. `src/App.css` contains the flat
@@ -65,6 +70,9 @@ document/workbench and responsive layout rules.
   recommendation is not accepted until the user reviews it. Derived,
   non-editable settings count as reviewed automatically, and bulk acceptance
   must not silently accept unreviewed overrides.
+- Bump the persistence schema and add an explicit migration when changing the
+  cached state shape. Keep current JSON exports importable, and preserve the
+  balanced planning-intent fallback for older exports that lack intent fields.
 - `foundational` choices can cap a domain's posture. `postureWeight: 0` is used
   for contextual decisions such as hosting that affect effort but must not be
   presented as security controls.
