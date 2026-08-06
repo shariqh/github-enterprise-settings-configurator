@@ -44,6 +44,11 @@
   gap: 8px;
 }
 
+.topbar__actions .button,
+.topbar__actions .link-button {
+  white-space: nowrap;
+}
+
 .plan-notice {
   align-items: center;
   background: var(--cp-surface-soft);
@@ -471,6 +476,7 @@
 }
 
 .plan-signature {
+  align-content: start;
   display: grid;
   gap: 20px;
   min-width: 0;
@@ -1239,7 +1245,7 @@
   padding: 0 28px;
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1360px) {
   .workbench {
     grid-template-columns: 220px minmax(0, 1fr);
   }
@@ -1263,15 +1269,21 @@
   }
 }
 
-@media (max-width: 820px) {
+@media (max-width: 1040px) {
   .topbar {
-    align-items: start;
+    align-items: center;
     flex-wrap: wrap;
+    gap: 8px 16px;
     padding-inline: 18px;
     padding-block: 12px;
   }
 
+  .brand {
+    flex: 1 1 220px;
+  }
+
   .topbar__actions {
+    flex: 0 1 auto;
     flex-wrap: wrap;
     justify-content: flex-end;
   }
@@ -1417,6 +1429,16 @@
   .topbar {
     align-items: start;
     padding-block: 13px;
+  }
+
+  .brand,
+  .topbar__actions {
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .topbar__actions {
+    justify-content: flex-start;
   }
 
   .topbar__actions .link-button {

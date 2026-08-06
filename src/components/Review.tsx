@@ -25,6 +25,7 @@ export function Review({
   onOpenDomain,
 }: ReviewProps) {
   const applicable = settings.filter((item) => item.disposition !== "Not applicable")
+  const reviewable = applicable.filter((item) => item.setting.editable !== false)
   const recommended = applicable.filter((item) => item.disposition === "Recommended")
   const overrides = applicable.filter((item) => item.disposition === "Override")
   const notApplicable = settings.filter((item) => item.disposition === "Not applicable")
@@ -48,7 +49,7 @@ export function Review({
       )}
 
       <div className="review-summary">
-        <div><strong>{reviewedCount} / {applicable.length}</strong><span>decisions reviewed</span></div>
+        <div><strong>{reviewedCount} / {reviewable.length}</strong><span>decisions reviewed</span></div>
         <div><strong>{recommended.length}</strong><span>recommended values</span></div>
         <div><strong>{overrides.length}</strong><span>deliberate overrides</span></div>
         <div><strong>{notApplicable.length}</strong><span>not applicable</span></div>

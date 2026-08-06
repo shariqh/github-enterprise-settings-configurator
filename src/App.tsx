@@ -78,7 +78,10 @@ const isDomain = (section: ActiveSection): section is Domain =>
   domainOrder.includes(section as Domain)
 
 const isReviewed = (item: RecommendedSetting, reviewed: Record<string, boolean>): boolean =>
-  item.setting.editable === false || reviewed[item.setting.id] === true
+  item.setting.editable !== false && reviewed[item.setting.id] === true
+
+const isComplete = (item: RecommendedSetting, reviewed: Record<string, boolean>): boolean =>
+  item.setting.editable === false || isReviewed(item, reviewed)
 
 const choiceLabel = (item: RecommendedSetting, choiceId = item.selected): string =>
   item.setting.choices.find((choice) => choice.id === choiceId)?.label ?? choiceId
@@ -117,6 +120,7 @@ function App() {
   const lastPersistedFingerprint = useRef(persistenceFingerprint)
   const settings = getRecommendedSettings(plan)
   const applicableSettings = settings.filter((item) => item.disposition !== "Not applicable")
+  const reviewableSettings = applicableSettings.filter((item) => item.setting.editable !== false)
   const settingsByDomain = domainOrder
     .map((domain) => ({
       domain,
@@ -130,12 +134,16 @@ function App() {
   const activeDomainItems = isDomain(activeSection)
     ? settingsByDomain.find((group) => group.domain === activeSection)?.items ?? []
     : []
+  const activeReviewableItems = activeDomainItems.filter((item) => item.setting.editable !== false)
   const activeItem = activeDomainItems.find((item) => item.setting.id === activeSettingId) ?? activeDomainItems[0]
   const activeIndex = activeItem
     ? activeDomainItems.findIndex((item) => item.setting.id === activeItem.setting.id)
     : -1
+  const activeReviewIndex = activeItem
+    ? activeReviewableItems.findIndex((item) => item.setting.id === activeItem.setting.id)
+    : -1
   const remainingRecommendations = activeDomainItems.filter(
-    (item) => item.disposition === "Recommended" && !isReviewed(item, reviewed),
+    (item) => item.disposition === "Recommended" && !isComplete(item, reviewed),
   )
 
   useEffect(() => {
@@ -211,7 +219,7 @@ function App() {
   const openDomain = (domain: Domain, settingId?: string) => {
     const items = settingsByDomain.find((group) => group.domain === domain)?.items ?? []
     const target = items.find((item) => item.setting.id === settingId)
-      ?? items.find((item) => !isReviewed(item, reviewed))
+      ?? items.find((item) => !isComplete(item, reviewed))
       ?? items[0]
     setActiveSection(domain)
     setActiveSettingId(target?.setting.id ?? null)
@@ -258,12 +266,14 @@ function App() {
   const saveAndContinue = () => {
     if (!activeItem || !isDomain(activeSection)) return
 
-    const nextReviewed = { ...reviewed, [activeItem.setting.id]: true }
-    setReviewed(nextReviewed)
+    const nextReviewed = activeItem.setting.editable === false
+      ? reviewed
+      : { ...reviewed, [activeItem.setting.id]: true }
+    if (activeItem.setting.editable !== false) setReviewed(nextReviewed)
 
     const nextItem = activeDomainItems
       .slice(activeIndex + 1)
-      .find((item) => !isReviewed(item, nextReviewed))
+      .find((item) => !isComplete(item, nextReviewed))
     if (nextItem) {
       setActiveSettingId(nextItem.setting.id)
       return
@@ -271,7 +281,7 @@ function App() {
 
     const wrappedItem = activeDomainItems
       .slice(0, activeIndex)
-      .find((item) => !isReviewed(item, nextReviewed))
+      .find((item) => !isComplete(item, nextReviewed))
     if (wrappedItem) {
       setActiveSettingId(wrappedItem.setting.id)
       return
@@ -283,9 +293,9 @@ function App() {
       ...settingsByDomain.slice(0, currentGroupIndex),
     ]
     const nextGroup = remainingGroups
-      .find((group) => group.items.some((item) => !isReviewed(item, nextReviewed)))
+      .find((group) => group.items.some((item) => !isComplete(item, nextReviewed)))
     if (nextGroup) {
-      const firstUnreviewed = nextGroup.items.find((item) => !isReviewed(item, nextReviewed))
+      const firstUnreviewed = nextGroup.items.find((item) => !isComplete(item, nextReviewed))
       setActiveSection(nextGroup.domain)
       setActiveSettingId(firstUnreviewed?.setting.id ?? nextGroup.items[0]?.setting.id ?? null)
       return
@@ -438,18 +448,20 @@ function App() {
             <small>{warnings.length ? "Needs attention" : "Ready"}</small>
           </button>
           {settingsByDomain.map(({ domain, items }) => {
-            const complete = items.filter((item) => isReviewed(item, reviewed)).length
+            const reviewableItems = items.filter((item) => item.setting.editable !== false)
+            const complete = reviewableItems.filter((item) => isReviewed(item, reviewed)).length
+            const domainComplete = complete === reviewableItems.length
             return (
               <button
                 aria-current={activeSection === domain ? "step" : undefined}
-                className={`path-item ${activeSection === domain ? "path-item--active" : ""} ${complete === items.length ? "path-item--complete" : ""}`}
+                className={`path-item ${activeSection === domain ? "path-item--active" : ""} ${domainComplete ? "path-item--complete" : ""}`}
                 disabled={!profileValid}
                 key={domain}
                 onClick={() => navigateTo(domain)}
                 type="button"
               >
                 <span>{domain}</span>
-                <small>{complete === items.length ? `✓ ${complete} reviewed` : `${complete} of ${items.length} reviewed`}</small>
+                <small>{domainComplete ? `✓ ${complete} reviewed` : `${complete} of ${reviewableItems.length} reviewed`}</small>
               </button>
             )
           })}
@@ -461,7 +473,7 @@ function App() {
             type="button"
           >
             <span>Review and export</span>
-            <small>{reviewedCount} of {applicableSettings.length} reviewed</small>
+            <small>{reviewedCount} of {reviewableSettings.length} reviewed</small>
           </button>
         </nav>
 
@@ -509,13 +521,14 @@ function App() {
 
               {domainView === "guided" && activeItem && (
                 <GuidedDecision
-                  index={activeIndex}
+                  canGoPrevious={activeIndex > 0}
+                  index={activeReviewIndex}
                   item={activeItem}
                   onChange={(value) => selectDecisionValue(activeItem.setting.id, value)}
                   onNext={saveAndContinue}
                   onPrevious={goToPreviousDecision}
                   reviewed={isReviewed(activeItem, reviewed)}
-                  total={activeDomainItems.length}
+                  total={activeReviewableItems.length}
                 />
               )}
 
@@ -687,7 +700,7 @@ function ProfileEditor({
       )}
 
       <footer className="profile-actions">
-        <span>{applicableCount} decisions will be included in this path.</span>
+        <span>{applicableCount} settings will be included in this path.</span>
         <button className="button button--primary" disabled={warnings.length > 0} onClick={onBuild} type="button">
           Build recommended plan
         </button>
@@ -701,21 +714,25 @@ interface GuidedDecisionProps {
   index: number
   total: number
   reviewed: boolean
+  canGoPrevious: boolean
   onChange: (value: string) => void
   onPrevious: () => void
   onNext: () => void
 }
 
-function GuidedDecision({ item, index, total, reviewed, onChange, onPrevious, onNext }: GuidedDecisionProps) {
+function GuidedDecision({ item, index, total, reviewed, canGoPrevious, onChange, onPrevious, onNext }: GuidedDecisionProps) {
   const { setting, selected, recommended, disposition } = item
+  const derived = setting.editable === false
   return (
     <div className="guided-decision">
       <div className="decision-progress">
-        <span>Decision {index + 1} of {total}</span>
-        <span>{reviewed ? "Reviewed" : "Not reviewed"}</span>
-        <div className="progress-track" role="progressbar" aria-label={`${index + 1} of ${total} decisions`} aria-valuemin={0} aria-valuemax={total} aria-valuenow={index + 1}>
-          <span style={{ width: `${(index + 1) / total * 100}%` }} />
-        </div>
+        <span>{derived ? "Profile-derived setting" : `Decision ${index + 1} of ${total}`}</span>
+        <span>{derived ? "Derived" : reviewed ? "Reviewed" : "Not reviewed"}</span>
+        {!derived && (
+          <div className="progress-track" role="progressbar" aria-label={`${index + 1} of ${total} decisions`} aria-valuemin={0} aria-valuemax={total} aria-valuenow={index + 1}>
+            <span style={{ width: `${(index + 1) / total * 100}%` }} />
+          </div>
+        )}
       </div>
 
       <article className="decision-document">
@@ -738,7 +755,7 @@ function GuidedDecision({ item, index, total, reviewed, onChange, onPrevious, on
           <strong>{disposition}</strong>
         </div>
         <footer className="decision-actions">
-          <button className="link-button" disabled={index === 0} onClick={onPrevious} type="button">← Previous</button>
+          <button className="link-button" disabled={!canGoPrevious} onClick={onPrevious} type="button">← Previous</button>
           <button
             className="button button--primary"
             onClick={(event) => {
@@ -776,7 +793,7 @@ function DecisionList({ items, reviewed, onOpen }: DecisionListProps) {
             <small>{item.setting.prompt}</small>
           </span>
           <span>{choiceLabel(item)}</span>
-          <span className={isReviewed(item, reviewed) ? "review-state review-state--complete" : "review-state"}>
+          <span className={isComplete(item, reviewed) ? "review-state review-state--complete" : "review-state"}>
             {item.setting.editable === false ? "Derived" : isReviewed(item, reviewed) ? "Reviewed" : "Review"}
           </span>
         </button>
