@@ -4,8 +4,9 @@ A public, static React + TypeScript decision assistant that turns fragmented Git
 
 ## Scope
 
-- Target profiles for GitHub.com, GHE.com data residency, or GHES 3.21; personal accounts or EMU; full enterprise or Copilot-only entitlement; greenfield, existing, or migration state.
-- 24 typed decisions spanning identity, governance, code security, Actions, audit, Copilot governance, and Copilot cost controls.
+- Target profiles for GitHub.com, GHE.com data residency, or GHES 3.21 with deployment-aware account, authentication, and provisioning choices.
+- Base plan, repository visibility, licensed products, and planning scope are modeled independently; GitHub Enterprise does not imply Copilot or paid security products.
+- Typed decisions span identity, governance, Secret Protection, Code Security, Code Quality, Actions, audit, Copilot governance, and Copilot cost controls.
 - Progressive disclosure for rationale, tradeoffs, prerequisites, consequences, scope, role, apply method, and source links.
 - JSON and Markdown exports of the desired state.
 
@@ -37,6 +38,7 @@ Worked examples include [safe-settings](https://github.com/github-community-proj
 ```bash
 pnpm install
 pnpm dev
+pnpm test
 pnpm lint
 pnpm build
 ```
@@ -49,6 +51,7 @@ For GitHub Pages, Vite uses the `/github-enterprise-settings-configurator/` base
 - No compliance grade, universal security score, breach prediction, or cross-customer comparison.
 - No claim that unknown tenant state is divergent. Not applicable is distinct from a tailored override.
 - No recommended promotional AI-credit amounts.
+- No claim that undocumented GHE.com product availability matches GitHub.com; unsupported or ambiguous combinations remain explicit.
 
 ## Roadmap and export adapters
 
