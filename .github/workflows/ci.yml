@@ -48,5 +48,8 @@ jobs:
       - name: Test product-watch rules
         run: pnpm product-watch:test
 
+      - name: Test Copilot evaluation rules
+        run: pnpm copilot-evaluation:test
+
       - name: Build and type-check
         run: pnpm build

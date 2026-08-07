@@ -54,6 +54,12 @@ For GitHub Pages, Vite uses the `/github-enterprise-settings-configurator/` base
 
 The scheduled [GitHub product watch](tooling/product-watch/README.md) monitors versioned GitHub Changelog, Docs/API, and GHES release-note sources. It deterministically opens evidence-rich human-review issues and never edits catalog or recommendation code. Manual workflow runs default to dry-run mode.
 
+Its optional [Copilot evaluation lane](docs/copilot-product-watch-evaluation.md)
+uses a compiled GitHub Agentic Workflow to comment on new or changed managed
+issue fingerprints. It is comment-only, default-no for undocumented
+availability, capped at five issues and 100 AI Credits per run, and remains
+separate from the deterministic watch.
+
 ## Non-goals
 
 - No authentication, backend, tenant connection, observed-state scan, or direct apply.
