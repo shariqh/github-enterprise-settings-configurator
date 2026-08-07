@@ -1,6 +1,26 @@
-export type Platform = "dotcom" | "residency" | "ghes"
-export type IdentityModel = "personal" | "emu"
-export type Entitlement = "enterprise" | "copilot"
+export type Deployment = "dotcom" | "residency" | "ghes"
+export type BasePlan = "team" | "enterprise" | "unknown"
+export type AccountModel = "personal" | "managed" | "instance" | "unknown"
+export type AuthenticationMethod =
+  | "github"
+  | "saml"
+  | "oidc"
+  | "built-in"
+  | "ldap"
+  | "cas"
+  | "unknown"
+export type ProvisioningMethod =
+  | "none"
+  | "scim-access"
+  | "scim"
+  | "jit"
+  | "ldap"
+  | "first-sign-in"
+  | "manual"
+  | "unknown"
+export type RepositoryVisibility = "public" | "private-internal" | "mixed" | "unknown"
+export type LicenseStatus = "unlicensed" | "licensed" | "unknown"
+export type CopilotPlan = "none" | "business" | "enterprise" | "unknown"
 export type CurrentState = "greenfield" | "existing" | "migration" | "unknown"
 export type PriorityId =
   | "secure-ghec"
@@ -10,17 +30,52 @@ export type PriorityId =
   | "security-rollout"
   | "migration-ready"
 
-export type ProductId = "actions" | "security" | "copilot" | "audit"
+export type LicensedProductId = "secretProtection" | "codeSecurity" | "codeQuality"
+export type PlanningScopeId = "actions" | "audit"
 export type IntentLevel = 0 | 1 | 2
 export type IntentAxis = "guardrailStrength" | "rolloutPace" | "operationalCapacity"
 export type Domain =
   | "Identity & administration"
   | "Organization & repository governance"
   | "Code security"
+  | "Code quality"
   | "Actions & supply chain"
   | "Audit visibility"
   | "Copilot governance"
   | "Copilot cost controls"
+
+export type CapabilityId =
+  | "enterprise-account"
+  | "internal-repositories"
+  | "managed-users"
+  | "personal-accounts"
+  | "instance-accounts"
+  | "enterprise-saml"
+  | "oidc"
+  | "built-in-authentication"
+  | "cas-authentication"
+  | "scim"
+  | "scim-access"
+  | "jit-provisioning"
+  | "ldap-lifecycle"
+  | "first-sign-in-provisioning"
+  | "manual-provisioning"
+  | "ghes-scim-preview"
+  | "actions"
+  | "actions-planning"
+  | "organization-audit"
+  | "enterprise-audit"
+  | "audit-planning"
+  | "dependency-graph"
+  | "dependabot-alerts"
+  | "public-repository-security"
+  | "secret-scanning"
+  | "secret-protection"
+  | "code-scanning"
+  | "code-security"
+  | "code-quality"
+  | "copilot-business"
+  | "copilot-enterprise"
 
 export type SourceTier =
   | "GitHub Docs · mechanics"
@@ -34,18 +89,41 @@ export interface Source {
   url: string
 }
 
+export interface CapabilityRequirement {
+  allOf?: CapabilityId[]
+  anyOf?: CapabilityId[]
+  noneOf?: CapabilityId[]
+}
+
 export interface Choice {
   id: string
   label: string
   description: string
+  availability?: CapabilityRequirement
+}
+
+export interface LicensedProducts {
+  secretProtection: LicenseStatus
+  codeSecurity: LicenseStatus
+  codeQuality: LicenseStatus
+  copilot: CopilotPlan
+}
+
+export interface PlanningScope {
+  actions: boolean
+  audit: boolean
 }
 
 export interface Profile {
-  platform: Platform
-  identity: IdentityModel
-  entitlement: Entitlement
+  deployment: Deployment
+  basePlan: BasePlan
+  accountModel: AccountModel
+  authentication: AuthenticationMethod
+  provisioning: ProvisioningMethod
+  repositoryVisibility: RepositoryVisibility
   currentState: CurrentState
-  products: Record<ProductId, boolean>
+  licensedProducts: LicensedProducts
+  planningScope: PlanningScope
 }
 
 export interface PlanIntent {
@@ -62,7 +140,7 @@ export interface Setting {
   choices: Choice[]
   recommended: string
   editable?: boolean
-  applies: (profile: Profile) => boolean
+  availability?: CapabilityRequirement
   rationale: string
   tradeoff: string
   prerequisites: string
@@ -90,5 +168,57 @@ export interface RecommendedSetting {
   setting: Setting
   recommended: string
   selected: string
-  disposition: "Recommended" | "Override" | "Not applicable"
+  disposition: "Recommended" | "Override"
+}
+
+export interface ProfileIssue {
+  code: string
+  message: string
+  field?: keyof Profile | `licensedProducts.${keyof LicensedProducts}`
+}
+
+export interface ProfileOption<T extends string> {
+  value: T
+  available: boolean
+  reason?: string
+}
+
+export interface ProfileOptions {
+  basePlan: ProfileOption<BasePlan>[]
+  accountModel: ProfileOption<AccountModel>[]
+  authentication: ProfileOption<AuthenticationMethod>[]
+  provisioning: ProfileOption<ProvisioningMethod>[]
+  repositoryVisibility: ProfileOption<RepositoryVisibility>[]
+  copilot: ProfileOption<CopilotPlan>[]
+  licensedProducts: Record<LicensedProductId, ProfileOption<LicenseStatus>[]>
+}
+
+export interface ResolvedProfile {
+  profile: Profile
+  capabilities: ReadonlySet<CapabilityId>
+  errors: ProfileIssue[]
+  warnings: ProfileIssue[]
+  options: ProfileOptions
+}
+
+export interface ResolvedPlan {
+  plan: Plan
+  profile: ResolvedProfile
+  settings: RecommendedSetting[]
+  reviewableSettingIds: string[]
+  reviewedSettingIds: string[]
+}
+
+export interface PlanDraftState {
+  profile: Profile
+  intent: PlanIntent
+  priorities: PriorityId[]
+  selections: Record<string, string>
+  dormantSelections: Record<string, string>
+  reviewed: Record<string, boolean>
+}
+
+export interface MigrationNotice {
+  code: string
+  message: string
 }

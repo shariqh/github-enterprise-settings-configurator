@@ -7,10 +7,11 @@
 - CI-style install: `pnpm install --frozen-lockfile`
 - Start the Vite development server: `pnpm dev`
 - Build and type-check: `pnpm build` (`tsc -b && vite build`)
+- Run generated and table-driven tests: `pnpm test`
 - Lint the repository: `pnpm lint`
 - Lint one file: `pnpm exec oxlint src/logic/scoring.ts`
 - Preview the production build: `pnpm preview`
-- No automated test runner or `test` script is currently configured.
+- Vitest runs pure TypeScript logic tests without a browser DOM.
 
 GitHub Pages deploys `dist/` from `main` through
 `.github/workflows/deploy-pages.yml`. Vite uses `/` locally and
@@ -22,28 +23,31 @@ do not assume the deployed app is hosted at the domain root.
 This is a client-only React 19 + TypeScript decision assistant. It has no
 router, backend, authentication, or tenant connection. A versioned local draft
 in browser `localStorage` preserves target profile, planning intent, priorities,
-explicit selections, and review state; JSON import accepts current exports and
-older exports without planning-intent metadata. `App.tsx` owns the guided
+active and dormant selections, and review state; JSON import accepts current
+exports and migrates schema v1 conservatively. `App.tsx` owns the guided
 workbench state and delegates persistence validation to
 `src/logic/persistence.ts`.
 
 The domain flow is:
 
-1. `src/types.ts` defines the profile, setting, plan, source, and disposition
-   contracts.
-2. `src/catalog.ts` is the authoritative setting catalog. Each entry contains
-   choices, applicability, evidence, ownership, application method, influence,
-   and effort metadata.
-3. `src/logic/recommendations.ts` derives the profile/priority-specific
-   recommendation, applies an explicit user selection when present, and marks
-   every catalog entry as `Recommended`, `Override`, or `Not applicable`.
-4. `src/logic/scoring.ts` groups applicable decisions by domain and calculates
+1. `src/types.ts` defines the deployment, identity, license, capability,
+   setting, plan, source, and disposition contracts.
+2. `src/logic/capabilities.ts` is the compatibility source of truth. It resolves
+   valid profile combinations, selectable options, and supported capabilities.
+   `src/logic/profile.ts` owns defaults, transitions, dormant selections, and
+   review invalidation.
+3. `src/catalog.ts` is the authoritative setting catalog. Each entry contains
+   choices, declarative capability requirements, evidence, ownership,
+   application method, influence, and effort metadata.
+4. `src/logic/recommendations.ts` resolves applicable entries, derives the
+   profile/priority-specific recommendation, and applies explicit selections.
+5. `src/logic/scoring.ts` groups applicable decisions by domain and calculates
    relative control influence plus rollout and ongoing effort. It deliberately
    produces separate domain scales rather than a composite score.
-5. `src/components/Review.tsx` renders those domain profiles, and
+6. `src/components/Review.tsx` renders those domain profiles, and
    `src/logic/export.ts` reuses the same calculations for JSON and Markdown
    exports. The browser creates downloads with `Blob` URLs.
-6. `src/logic/persistence.ts` validates cached and imported plan data against
+7. `src/logic/persistence.ts` validates cached and imported plan data against
    the current profile, priority, setting, and choice contracts before applying
    it. Do not trust raw local-storage or file-import values.
 
@@ -60,16 +64,19 @@ document/workbench and responsive layout rules.
 - Keep catalog IDs stable. Recommendation overrides and exported desired-state
   records refer to setting and choice IDs, not labels.
 - A new catalog setting must supply the full `Setting` contract, including
-  `applies`, rationale/tradeoff/prerequisite/consequence text, scope, role,
+  declarative `availability`, rationale/tradeoff/prerequisite/consequence text, scope, role,
   apply method, influence, effort bands, and tiered sources.
-- Use `applies` for target-profile exclusion. Do not model an inapplicable
-  setting as an override, and do not turn unknown current state into a gap.
+- Use capability requirements for target-profile exclusion. Resolved plans
+  contain applicable settings only; non-applicable settings must not affect
+  counts, domains, scoring, visuals, or exports.
 - Profile- or priority-dependent defaults belong in `recommendationFor`.
   `plan.selections` remains the explicit user override layer.
 - Keep `reviewed` state separate from `plan.selections`: a preselected
   recommendation is not accepted until the user reviews it. Derived,
   non-editable settings count as reviewed automatically, and bulk acceptance
   must not silently accept unreviewed overrides.
+- Move selections made inapplicable by profile changes to dormant state. Restore
+  them as unreviewed if their capability returns; never silently restore review.
 - Bump the persistence schema and add an explicit migration when changing the
   cached state shape. Keep current JSON exports importable, and preserve the
   balanced planning-intent fallback for older exports that lack intent fields.

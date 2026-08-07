@@ -57,31 +57,56 @@ export function getChoiceImpact(setting: Setting, selected: string): ChoiceImpac
   }
 }
 
+const controlWeightOf = (setting: RecommendedSetting["setting"]): number =>
+  setting.postureWeight ?? influenceWeight[setting.influence]
+
+/** Guards against zero/degenerate denominators so every ratio stays finite. */
+const safeDivide = (numerator: number, denominator: number): number =>
+  denominator === 0 ? 0 : numerator / denominator
+
+const finite = (value: number, fallback = 0): number =>
+  Number.isFinite(value) ? value : fallback
+
+/**
+ * Groups only the applicable settings supplied by the caller (RecommendedSetting[]
+ * carries Recommended/Override dispositions only — non-applicable and
+ * product-disabled settings never reach this function). Empty, context-only
+ * (postureWeight 0), single-item, and other degenerate groups always resolve to
+ * finite, in-range output.
+ */
 export const buildDomainProfiles = (settings: RecommendedSetting[]): DomainProfile[] => {
   const groups = new Map<Domain, RecommendedSetting[]>()
-  settings
-    .filter((item) => item.disposition !== "Not applicable")
-    .forEach((item) => groups.set(item.setting.domain, [...(groups.get(item.setting.domain) ?? []), item]))
+  settings.forEach((item) =>
+    groups.set(item.setting.domain, [...(groups.get(item.setting.domain) ?? []), item]))
 
   return [...groups.entries()].map(([domain, items]) => {
-    const scoredItems = items.filter((item) => (item.setting.postureWeight ?? influenceWeight[item.setting.influence]) > 0)
-    const totalWeight = scoredItems.reduce((sum, item) => sum + (item.setting.postureWeight ?? influenceWeight[item.setting.influence]), 0)
-    const rawPosture = totalWeight === 0 ? 0 : scoredItems.reduce((sum, item) => {
-      const weight = item.setting.postureWeight ?? influenceWeight[item.setting.influence]
-      return sum + choiceStrength(item.setting, item.selected) * weight
-    }, 0) / totalWeight
+    const scoredItems = items.filter((item) => controlWeightOf(item.setting) > 0)
+    const totalWeight = scoredItems.reduce((sum, item) => sum + controlWeightOf(item.setting), 0)
+    const rawPosture = finite(safeDivide(
+      scoredItems.reduce((sum, item) => sum + choiceStrength(item.setting, item.selected) * controlWeightOf(item.setting), 0),
+      totalWeight,
+    ))
 
     const foundations = scoredItems.filter((item) => item.setting.foundational)
     const foundationPosture = foundations.length === 0
       ? 1
-      : foundations.reduce((sum, item) => sum + choiceStrength(item.setting, item.selected), 0) / foundations.length
+      : finite(safeDivide(
+        foundations.reduce((sum, item) => sum + choiceStrength(item.setting, item.selected), 0),
+        foundations.length,
+      ), 1)
     const foundationCap = 0.45 + foundationPosture * 0.55
     const posture = Math.min(rawPosture, foundationCap)
 
     const rolloutPotential = items.reduce((sum, item) => sum + bandValue[item.setting.rolloutBand], 0)
     const ongoingPotential = items.reduce((sum, item) => sum + bandValue[item.setting.ongoingBand], 0)
-    const rolloutLoad = items.reduce((sum, item) => sum + bandValue[item.setting.rolloutBand] * effortFactor(item.setting, item.selected), 0) / rolloutPotential
-    const ongoingLoad = items.reduce((sum, item) => sum + bandValue[item.setting.ongoingBand] * effortFactor(item.setting, item.selected), 0) / ongoingPotential
+    const rolloutLoad = finite(safeDivide(
+      items.reduce((sum, item) => sum + bandValue[item.setting.rolloutBand] * effortFactor(item.setting, item.selected), 0),
+      rolloutPotential,
+    ))
+    const ongoingLoad = finite(safeDivide(
+      items.reduce((sum, item) => sum + bandValue[item.setting.ongoingBand] * effortFactor(item.setting, item.selected), 0),
+      ongoingPotential,
+    ))
 
     return {
       domain,

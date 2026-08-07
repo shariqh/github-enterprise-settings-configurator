@@ -1,17 +1,40 @@
 import { catalog } from "../catalog"
-import type { IntentLevel, Plan, Profile, RecommendedSetting, Setting } from "../types"
+import { getProfileErrors, getProfileWarnings as getCapabilityWarnings, meetsCapabilityRequirement, resolveProfile } from "./capabilities"
+import type { Choice, IntentLevel, Plan, Profile, RecommendedSetting, Setting } from "../types"
 
-const requiresEmuProvisioning = (setting: Setting, plan: Plan): boolean =>
-  setting.id === "sso-scim" && plan.profile.identity === "emu"
+/**
+ * Maps the profile's account model, authentication method, and provisioning
+ * method to the matching `identity-lifecycle` choice id. The identity
+ * compatibility matrix in capabilities.ts guarantees at most one of these
+ * predicates matches a valid profile.
+ */
+const identityLifecycleChoiceFor = (profile: Profile): string => {
+  const { accountModel, authentication, provisioning } = profile
+  if (accountModel === "personal" && authentication === "saml" && provisioning === "scim-access") {
+    return "personal-access-scim"
+  }
+  if (accountModel === "personal" && authentication === "saml") return "personal-saml"
+  if (accountModel === "personal") return "personal-github"
+  if (accountModel === "managed" && authentication === "saml") return "emu-saml-scim"
+  if (accountModel === "managed" && authentication === "oidc") return "emu-oidc-scim"
+  if (accountModel === "instance" && authentication === "saml" && provisioning === "jit") return "ghes-saml-jit"
+  if (accountModel === "instance" && authentication === "saml" && provisioning === "scim") return "ghes-saml-scim-preview"
+  if (accountModel === "instance" && authentication === "ldap") return "ghes-ldap"
+  if (accountModel === "instance" && authentication === "cas") return "ghes-cas"
+  if (accountModel === "instance") return "ghes-built-in"
+  return "personal-github"
+}
 
 const baseRecommendationFor = (setting: Setting, plan: Plan): string => {
   const { profile, priorities } = plan
-  if (setting.id === "enterprise-type") return profile.platform
-  if (requiresEmuProvisioning(setting, plan)) return "saml-scim"
+  if (setting.id === "enterprise-type") return profile.deployment
+  if (setting.id === "identity-lifecycle") return identityLifecycleChoiceFor(profile)
   if (setting.id === "verified-domains" && profile.currentState === "migration") return "verify-migration"
   if (setting.id === "workflow-token" && profile.currentState === "migration") return "migration"
-  if (priorities.includes("security-rollout") && setting.id === "security-configuration") return "wave"
-  if (setting.id === "security-configuration" && profile.currentState === "greenfield") return "baseline-all"
+  if (priorities.includes("security-rollout") && setting.id === "secret-protection-configuration") return "wave"
+  if (priorities.includes("security-rollout") && setting.id === "code-security-configuration") return "wave"
+  if (setting.id === "secret-protection-configuration" && profile.currentState === "greenfield") return "baseline-all"
+  if (setting.id === "code-security-configuration" && profile.currentState === "greenfield") return "baseline-all"
   if (setting.id === "included-usage-cap" && profile.currentState === "greenfield") return "cap-overage"
   if (priorities.includes("regulated-overlay") && setting.id === "audit-streaming") return "stream-siem"
   if (priorities.includes("copilot-cost") && setting.id === "included-usage-cap") return "cap-overage"
@@ -21,12 +44,22 @@ const baseRecommendationFor = (setting: Setting, plan: Plan): string => {
 
 const intentDirection = (level: IntentLevel): number => 1 - level
 
-const recommendationFor = (setting: Setting, plan: Plan): string => {
+/**
+ * Derives the recommended choice id for a setting, constrained to the
+ * choices that are available for the resolved profile. Intent tuning can
+ * only move the recommendation within `filteredChoices`, so it can never
+ * weaken a hard derived/identity/product constraint by selecting an
+ * unavailable choice.
+ */
+const recommendationFor = (setting: Setting, filteredChoices: Choice[], plan: Plan): string => {
   const baseRecommendation = baseRecommendationFor(setting, plan)
-  if (setting.editable === false || requiresEmuProvisioning(setting, plan)) return baseRecommendation
+  const isAvailable = filteredChoices.some((choice) => choice.id === baseRecommendation)
+  const fallback = isAvailable ? baseRecommendation : (filteredChoices[0]?.id ?? baseRecommendation)
 
-  const baseIndex = setting.choices.findIndex((choice) => choice.id === baseRecommendation)
-  if (baseIndex < 0) return baseRecommendation
+  if (setting.editable === false) return fallback
+
+  const baseIndex = filteredChoices.findIndex((choice) => choice.id === fallback)
+  if (baseIndex < 0) return fallback
 
   const guardrailDirection = intentDirection(plan.intent.guardrailStrength) * 2
   const rolloutDirection = setting.rolloutBand === "High"
@@ -36,38 +69,46 @@ const recommendationFor = (setting: Setting, plan: Plan): string => {
     ? intentDirection(plan.intent.operationalCapacity)
     : 0
   const combinedDirection = guardrailDirection + rolloutDirection + capacityDirection
-  if (combinedDirection === 0) return baseRecommendation
+  if (combinedDirection === 0) return fallback
 
   const choiceOffset = combinedDirection > 0 ? 1 : -1
-  const adjustedIndex = Math.max(0, Math.min(setting.choices.length - 1, baseIndex + choiceOffset))
-  return setting.choices[adjustedIndex].id
+  const adjustedIndex = Math.max(0, Math.min(filteredChoices.length - 1, baseIndex + choiceOffset))
+  return filteredChoices[adjustedIndex].id
 }
 
-export const getRecommendedSettings = (plan: Plan): RecommendedSetting[] =>
-  catalog.map((setting) => {
-    const recommended = recommendationFor(setting, plan)
-    const selected = plan.selections[setting.id] ?? recommended
-    const applies = setting.applies(plan.profile)
-    return {
-      setting,
+export const getRecommendedSettings = (plan: Plan): RecommendedSetting[] => {
+  const { capabilities } = resolveProfile(plan.profile)
+
+  const applicableSettings = catalog.filter((setting) =>
+    meetsCapabilityRequirement(capabilities, setting.availability))
+
+  return applicableSettings.flatMap((setting) => {
+    const filteredChoices = setting.choices.filter((choice) =>
+      meetsCapabilityRequirement(capabilities, choice.availability))
+    if (filteredChoices.length === 0) return []
+
+    const availableSetting: Setting = { ...setting, choices: filteredChoices }
+
+    const recommended = recommendationFor(setting, filteredChoices, plan)
+    const requestedSelection = setting.editable === false
+      ? undefined
+      : plan.selections[setting.id]
+    const selected = requestedSelection && filteredChoices.some((choice) => choice.id === requestedSelection)
+      ? requestedSelection
+      : recommended
+
+    return [{
+      setting: availableSetting,
       recommended,
       selected,
-      disposition: applies ? (selected === recommended ? "Recommended" : "Override") : "Not applicable",
-    }
+      disposition: selected === recommended ? "Recommended" : "Override",
+    }]
   })
-
-export const getProfileWarnings = (profile: Profile): string[] => {
-  const warnings: string[] = []
-  if (profile.platform === "ghes" && profile.identity === "emu") {
-    warnings.push("Enterprise Managed Users is a GitHub Enterprise Cloud model. Select personal accounts for GHES 3.21.")
-  }
-  if (profile.platform === "residency" && profile.identity === "personal") {
-    warnings.push("GHE.com data residency requires Enterprise Managed Users (EMU).")
-  }
-  if (!profile.products.copilot && profile.entitlement === "copilot") {
-    warnings.push("Copilot-only entitlement requires the Copilot product area.")
-  }
-  return warnings
 }
 
-export const isProfileValid = (profile: Profile): boolean => getProfileWarnings(profile).length === 0
+export const getProfileWarnings = (profile: Profile): string[] => [
+  ...getProfileErrors(profile).map((issue) => issue.message),
+  ...getCapabilityWarnings(profile).map((issue) => issue.message),
+]
+
+export const isProfileValid = (profile: Profile): boolean => getProfileErrors(profile).length === 0

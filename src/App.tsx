@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { ChangeEvent } from "react"
-import { priorityOptions, productLabels } from "./catalog"
+import { priorityOptions } from "./catalog"
 import { ChoiceGroup } from "./components/ChoiceGroup"
 import { Review } from "./components/Review"
 import {
@@ -9,69 +9,143 @@ import {
   IntentControls,
   PlanSignature,
 } from "./components/VisualPlanning"
+import { deployments, resolveProfile } from "./logic/capabilities"
 import { buildMarkdown, download, exportObject } from "./logic/export"
-import { defaultIntent } from "./logic/intent"
 import {
   clearCachedPlan,
   parseImportedPlan,
   readCachedPlan,
   saveCachedPlan,
 } from "./logic/persistence"
-import { getProfileWarnings, getRecommendedSettings, isProfileValid } from "./logic/recommendations"
+import {
+  acceptDecisionValues,
+  createDefaultPlanDraft,
+  reconcilePlanDraftState,
+  transitionProfile,
+} from "./logic/profile"
+import { getRecommendedSettings } from "./logic/recommendations"
 import type {
+  AccountModel,
+  AuthenticationMethod,
+  BasePlan,
+  CopilotPlan,
   CurrentState,
+  Deployment,
   Domain,
-  Entitlement,
-  IdentityModel,
   IntentAxis,
   IntentLevel,
+  LicenseStatus,
+  LicensedProductId,
+  MigrationNotice,
   Plan,
+  PlanDraftState,
   PlanIntent,
-  Platform,
+  PlanningScopeId,
   PriorityId,
-  ProductId,
   Profile,
+  ProvisioningMethod,
   RecommendedSetting,
+  RepositoryVisibility,
+  ResolvedProfile,
 } from "./types"
 import "./App.css"
-
-const initialProfile: Profile = {
-  platform: "dotcom",
-  identity: "personal",
-  entitlement: "enterprise",
-  currentState: "greenfield",
-  products: { actions: true, security: true, copilot: true, audit: true },
-}
 
 const domainOrder: Domain[] = [
   "Identity & administration",
   "Organization & repository governance",
   "Code security",
+  "Code quality",
   "Actions & supply chain",
   "Audit visibility",
   "Copilot governance",
   "Copilot cost controls",
 ]
 
-const platformLabels: Record<Platform, string> = {
+const currentStates: CurrentState[] = ["greenfield", "existing", "migration", "unknown"]
+
+const deploymentLabels: Record<Deployment, string> = {
   dotcom: "GitHub.com",
   residency: "GHE.com data residency",
   ghes: "GHES 3.21",
 }
 
-const identityLabels: Record<IdentityModel, string> = {
-  personal: "Personal accounts",
-  emu: "EMU",
+const basePlanLabels: Record<BasePlan, string> = {
+  team: "GitHub Team",
+  enterprise: "GitHub Enterprise",
+  unknown: "Unknown — needs discovery",
 }
 
-const entitlementLabels: Record<Entitlement, string> = {
-  enterprise: "Full enterprise",
-  copilot: "Copilot-only",
+const accountModelLabels: Record<AccountModel, string> = {
+  personal: "Personal accounts",
+  managed: "Managed users (EMU)",
+  instance: "Instance accounts (GHES)",
+  unknown: "Unknown — needs discovery",
 }
+
+const authenticationLabels: Record<AuthenticationMethod, string> = {
+  github: "GitHub.com credentials",
+  saml: "SAML SSO",
+  oidc: "OIDC SSO",
+  "built-in": "Built-in authentication",
+  ldap: "LDAP",
+  cas: "CAS",
+  unknown: "Unknown — needs discovery",
+}
+
+const provisioningLabels: Record<ProvisioningMethod, string> = {
+  none: "None",
+  "scim-access": "SAML SSO only (no SCIM provisioning)",
+  scim: "SCIM provisioning",
+  jit: "Just-in-time provisioning",
+  ldap: "LDAP sync",
+  "first-sign-in": "First sign-in provisioning",
+  manual: "Manual account creation",
+  unknown: "Unknown — needs discovery",
+}
+
+const repositoryVisibilityLabels: Record<RepositoryVisibility, string> = {
+  public: "Public",
+  "private-internal": "Private/internal only",
+  mixed: "Public and private/internal",
+  unknown: "Unknown — needs discovery",
+}
+
+const currentStateLabels: Record<CurrentState, string> = {
+  greenfield: "Greenfield",
+  existing: "Existing environment",
+  migration: "Migration",
+  unknown: "Unknown / discovery needed",
+}
+
+const licenseStatusLabels: Record<LicenseStatus, string> = {
+  unlicensed: "Not licensed",
+  licensed: "Licensed",
+  unknown: "Unknown — needs discovery",
+}
+
+const copilotPlanLabels: Record<CopilotPlan, string> = {
+  none: "None",
+  business: "Copilot Business",
+  enterprise: "Copilot Enterprise",
+  unknown: "Unknown — needs discovery",
+}
+
+const licensedProductLabels: Record<LicensedProductId, string> = {
+  secretProtection: "Secret Protection",
+  codeSecurity: "Code Security",
+  codeQuality: "Code Quality",
+}
+
+const planningScopeLabels: Record<PlanningScopeId, string> = {
+  actions: "GitHub Actions",
+  audit: "Audit log visibility",
+}
+
+const licensedProductOrder: LicensedProductId[] = ["secretProtection", "codeSecurity", "codeQuality"]
+const planningScopeOrder: PlanningScopeId[] = ["actions", "audit"]
 
 type ActiveSection = "profile" | "review" | Domain
 type DomainView = "guided" | "list"
-type ProfileKey = keyof Omit<Profile, "products">
 type PlanNotice = { kind: "error" | "info" | "success"; message: string }
 
 const isDomain = (section: ActiveSection): section is Domain =>
@@ -88,12 +162,16 @@ const choiceLabel = (item: RecommendedSetting, choiceId = item.selected): string
 
 function App() {
   const [cachedPlan] = useState(readCachedPlan)
-  const restoredPlan = cachedPlan.ok ? cachedPlan.value : null
-  const [profile, setProfile] = useState<Profile>(restoredPlan?.profile ?? initialProfile)
-  const [intent, setIntent] = useState<PlanIntent>(restoredPlan?.intent ?? defaultIntent)
-  const [priorities, setPriorities] = useState<PriorityId[]>(restoredPlan?.priorities ?? ["secure-ghec"])
-  const [selections, setSelections] = useState<Record<string, string>>(restoredPlan?.selections ?? {})
-  const [reviewed, setReviewed] = useState<Record<string, boolean>>(restoredPlan?.reviewed ?? {})
+  const restoredDraft = cachedPlan.ok ? cachedPlan.value : null
+  const [initialRestoration] = useState(() =>
+    reconcilePlanDraftState(restoredDraft?.state ?? createDefaultPlanDraft()))
+  const initialDraft = initialRestoration.state
+  const [profile, setProfile] = useState<Profile>(initialDraft.profile)
+  const [intent, setIntent] = useState<PlanIntent>(initialDraft.intent)
+  const [priorities, setPriorities] = useState<PriorityId[]>(initialDraft.priorities)
+  const [selections, setSelections] = useState<Record<string, string>>(initialDraft.selections)
+  const [dormantSelections, setDormantSelections] = useState<Record<string, string>>(initialDraft.dormantSelections)
+  const [reviewed, setReviewed] = useState<Record<string, boolean>>(initialDraft.reviewed)
   const [activeSection, setActiveSection] = useState<ActiveSection>("profile")
   const [activeSettingId, setActiveSettingId] = useState<string | null>(null)
   const [domainView, setDomainView] = useState<DomainView>("guided")
@@ -101,13 +179,16 @@ function App() {
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false)
   const [planNotice, setPlanNotice] = useState<PlanNotice | null>(() => {
     if (!cachedPlan.ok) return { kind: "error", message: cachedPlan.error }
-    if (cachedPlan.value) return { kind: "success", message: "Restored your local draft." }
+    if (cachedPlan.value) {
+      const migrationSummary = [...cachedPlan.value.notices, ...initialRestoration.notices]
+        .map((notice) => notice.message)
+        .join(" ")
+      return {
+        kind: "success",
+        message: `Restored your local draft.${migrationSummary ? ` ${migrationSummary}` : ""}`,
+      }
+    }
     return null
-  })
-  const enterpriseProducts = useRef<Profile["products"]>({
-    ...(restoredPlan?.profile.entitlement === "enterprise"
-      ? restoredPlan.profile.products
-      : initialProfile.products),
   })
   const importInputRef = useRef<HTMLInputElement>(null)
   const workspaceRef = useRef<HTMLElement>(null)
@@ -118,24 +199,28 @@ function App() {
   const focusReady = useRef(false)
 
   const plan: Plan = { profile, intent, priorities, selections }
-  const persistentState = useMemo(
-    () => ({ profile, intent, priorities, selections, reviewed }),
-    [profile, intent, priorities, selections, reviewed],
+  const resolvedProfile: ResolvedProfile = resolveProfile(profile)
+  const profileValid = resolvedProfile.errors.length === 0
+  const persistentState: PlanDraftState = useMemo(
+    () => ({ profile, intent, priorities, selections, dormantSelections, reviewed }),
+    [profile, intent, priorities, selections, dormantSelections, reviewed],
   )
   const persistenceFingerprint = JSON.stringify(persistentState)
-  const lastPersistedFingerprint = useRef(persistenceFingerprint)
+  const restoredStateChanged = restoredDraft !== null
+    && JSON.stringify(restoredDraft.state) !== persistenceFingerprint
+  const shouldPersistRestoration = restoredDraft !== null
+    && (restoredDraft.migratedFromVersion !== null || restoredStateChanged)
+  const lastPersistedFingerprint = useRef(shouldPersistRestoration ? "" : persistenceFingerprint)
+  const suppressNextSaveNotice = useRef(shouldPersistRestoration)
   const settings = getRecommendedSettings(plan)
-  const applicableSettings = settings.filter((item) => item.disposition !== "Not applicable")
-  const reviewableSettings = applicableSettings.filter((item) => item.setting.editable !== false)
+  const reviewableSettings = settings.filter((item) => item.setting.editable !== false)
   const settingsByDomain = domainOrder
     .map((domain) => ({
       domain,
-      items: applicableSettings.filter((item) => item.setting.domain === domain),
+      items: settings.filter((item) => item.setting.domain === domain),
     }))
     .filter((group) => group.items.length > 0)
-  const warnings = getProfileWarnings(profile)
-  const profileValid = isProfileValid(profile)
-  const reviewedCount = applicableSettings.filter((item) => isReviewed(item, reviewed)).length
+  const reviewedCount = settings.filter((item) => isReviewed(item, reviewed)).length
   const activeSectionLabel = activeSection === "profile"
     ? "Target profile"
     : activeSection === "review"
@@ -174,6 +259,10 @@ function App() {
 
     const saved = saveCachedPlan(persistentState)
     if (saved.ok) lastPersistedFingerprint.current = persistenceFingerprint
+    const suppressNotice = suppressNextSaveNotice.current
+    suppressNextSaveNotice.current = false
+    if (suppressNotice && saved.ok) return
+
     setPlanNotice(saved.ok
       ? { kind: "info", message: "Saved locally in this browser." }
       : { kind: "error", message: saved.error })
@@ -202,42 +291,48 @@ function App() {
     }
   }, [actionsMenuOpen, pathMenuOpen])
 
-  const clearReviews = () => setReviewed({})
-
-  const setProfileValue = <K extends ProfileKey>(key: K, value: Profile[K]) => {
-    clearReviews()
-    setProfile((current) => ({ ...current, [key]: value }))
-  }
-
-  const setProduct = (product: ProductId, enabled: boolean) => {
-    clearReviews()
-    setProfile((current) => {
-      const products = { ...current.products, [product]: enabled }
-      if (current.entitlement === "enterprise") {
-        enterpriseProducts.current = products
-      }
-      return { ...current, products }
+  const applyProfilePatch = (patch: Partial<Profile>) => {
+    const { profile: nextProfile, notices: transitionNotices } = transitionProfile(profile, patch)
+    const reconciled = reconcilePlanDraftState({
+      profile: nextProfile,
+      intent,
+      priorities,
+      selections,
+      dormantSelections,
+      reviewed,
     })
+    const allNotices: MigrationNotice[] = [...transitionNotices, ...reconciled.notices]
+    if (
+      allNotices.length > 0
+      && JSON.stringify(reconciled.state) !== persistenceFingerprint
+    ) {
+      suppressNextSaveNotice.current = true
+    }
+
+    setProfile(nextProfile)
+    setSelections(reconciled.state.selections)
+    setDormantSelections(reconciled.state.dormantSelections)
+    setReviewed(reconciled.state.reviewed)
+    if (allNotices.length > 0) {
+      setPlanNotice({ kind: "info", message: allNotices.map((notice) => notice.message).join(" ") })
+    }
   }
 
-  const setEntitlement = (entitlement: Entitlement) => {
-    clearReviews()
-    setProfile((current) => {
-      if (current.entitlement === "enterprise" && entitlement === "copilot") {
-        enterpriseProducts.current = { ...current.products }
-      }
-      return {
-        ...current,
-        entitlement,
-        products: entitlement === "copilot"
-          ? { actions: false, security: false, copilot: true, audit: false }
-          : { ...enterpriseProducts.current },
-      }
-    })
-  }
+  const setDeployment = (value: Deployment) => applyProfilePatch({ deployment: value })
+  const setBasePlan = (value: BasePlan) => applyProfilePatch({ basePlan: value })
+  const setAccountModel = (value: AccountModel) => applyProfilePatch({ accountModel: value })
+  const setAuthentication = (value: AuthenticationMethod) => applyProfilePatch({ authentication: value })
+  const setProvisioning = (value: ProvisioningMethod) => applyProfilePatch({ provisioning: value })
+  const setRepositoryVisibility = (value: RepositoryVisibility) => applyProfilePatch({ repositoryVisibility: value })
+  const setCurrentState = (value: CurrentState) => applyProfilePatch({ currentState: value })
+  const setLicenseStatus = (product: LicensedProductId, status: LicenseStatus) =>
+    applyProfilePatch({ licensedProducts: { ...profile.licensedProducts, [product]: status } })
+  const setCopilotPlan = (value: CopilotPlan) =>
+    applyProfilePatch({ licensedProducts: { ...profile.licensedProducts, copilot: value } })
+  const setPlanningScope = (scope: PlanningScopeId, enabled: boolean) =>
+    applyProfilePatch({ planningScope: { ...profile.planningScope, [scope]: enabled } })
 
   const togglePriority = (priority: PriorityId) => {
-    clearReviews()
     setPriorities((current) =>
       current.includes(priority)
         ? current.filter((id) => id !== priority)
@@ -246,7 +341,6 @@ function App() {
   }
 
   const setIntentValue = (axis: IntentAxis, value: IntentLevel) => {
-    clearReviews()
     setIntent((current) => ({ ...current, [axis]: value }))
   }
 
@@ -292,22 +386,23 @@ function App() {
   }
 
   const acceptRemainingRecommendations = () => {
-    setReviewed((current) => {
-      const next = { ...current }
-      remainingRecommendations.forEach((item) => {
-        next[item.setting.id] = true
-      })
-      return next
-    })
+    const accepted = acceptDecisionValues(
+      { selections, reviewed },
+      remainingRecommendations,
+    )
+    setSelections(accepted.selections)
+    setReviewed(accepted.reviewed)
   }
 
   const saveAndContinue = () => {
     if (!activeItem || !isDomain(activeSection)) return
 
-    const nextReviewed = activeItem.setting.editable === false
-      ? reviewed
-      : { ...reviewed, [activeItem.setting.id]: true }
-    if (activeItem.setting.editable !== false) setReviewed(nextReviewed)
+    const accepted = acceptDecisionValues({ selections, reviewed }, [activeItem])
+    const nextReviewed = accepted.reviewed
+    if (activeItem.setting.editable !== false) {
+      setSelections(accepted.selections)
+      setReviewed(nextReviewed)
+    }
 
     const nextItem = activeDomainItems
       .slice(activeIndex + 1)
@@ -349,20 +444,14 @@ function App() {
 
   const reset = () => {
     const cleared = clearCachedPlan()
-    const defaultState = {
-      profile: initialProfile,
-      intent: defaultIntent,
-      priorities: ["secure-ghec"] as PriorityId[],
-      selections: {},
-      reviewed: {},
-    }
-    lastPersistedFingerprint.current = cleared.ok ? JSON.stringify(defaultState) : ""
-    enterpriseProducts.current = { ...initialProfile.products }
-    setProfile(initialProfile)
-    setIntent({ ...defaultIntent })
-    setPriorities(["secure-ghec"])
-    setSelections({})
-    setReviewed({})
+    const defaultDraft = createDefaultPlanDraft()
+    lastPersistedFingerprint.current = cleared.ok ? JSON.stringify(defaultDraft) : ""
+    setProfile(defaultDraft.profile)
+    setIntent(defaultDraft.intent)
+    setPriorities(defaultDraft.priorities)
+    setSelections(defaultDraft.selections)
+    setDormantSelections(defaultDraft.dormantSelections)
+    setReviewed(defaultDraft.reviewed)
     setActiveSection("profile")
     setActiveSettingId(null)
     setDomainView("guided")
@@ -394,26 +483,26 @@ function App() {
       return
     }
 
-    const { state, importedSettingCount, usedDefaultIntent, restoredReviewState } = imported.value
-    const saved = saveCachedPlan(state)
-    if (saved.ok) lastPersistedFingerprint.current = JSON.stringify(state)
-    enterpriseProducts.current = {
-      ...(state.profile.entitlement === "enterprise" ? state.profile.products : initialProfile.products),
-    }
-    setProfile(state.profile)
-    setIntent(state.intent)
-    setPriorities(state.priorities)
-    setSelections(state.selections)
-    setReviewed(state.reviewed)
+    const { state, notices } = imported.value
+    const reconciled = reconcilePlanDraftState(state)
+    const importedState = reconciled.state
+    const saved = saveCachedPlan(importedState)
+    if (saved.ok) lastPersistedFingerprint.current = JSON.stringify(importedState)
+    setProfile(importedState.profile)
+    setIntent(importedState.intent)
+    setPriorities(importedState.priorities)
+    setSelections(importedState.selections)
+    setDormantSelections(importedState.dormantSelections)
+    setReviewed(importedState.reviewed)
     setActiveSection("profile")
     setActiveSettingId(null)
     setDomainView("guided")
 
-    const compatibilityNotes = [
-      usedDefaultIntent ? "Balanced planning intent was applied because this is an older export." : null,
-      restoredReviewState ? null : "Review completion restarted because the export did not contain review state.",
-    ].filter((note): note is string => note !== null)
-    const importMessage = `Imported ${importedSettingCount} setting${importedSettingCount === 1 ? "" : "s"}. ${compatibilityNotes.join(" ")}`
+    const importedSettingCount = Object.keys(importedState.selections).length
+    const migrationSummary = [...notices, ...reconciled.notices]
+      .map((notice) => notice.message)
+      .join(" ")
+    const importMessage = `Imported ${importedSettingCount} active setting${importedSettingCount === 1 ? "" : "s"}.${migrationSummary ? ` ${migrationSummary}` : ""}`
     setPlanNotice(saved.ok
       ? { kind: "success", message: importMessage.trim() }
       : { kind: "error", message: `${importMessage} ${saved.error}`.trim() })
@@ -426,7 +515,7 @@ function App() {
         exportObject(
           plan,
           settings,
-          applicableSettings
+          settings
             .filter((item) => isReviewed(item, reviewed))
             .map((item) => item.setting.id),
         ),
@@ -447,7 +536,7 @@ function App() {
       <header className="topbar">
         <div className="brand">
           <strong>Enterprise settings plan</strong>
-          <span>{platformLabels[profile.platform]} / {identityLabels[profile.identity]} / {entitlementLabels[profile.entitlement]}</span>
+          <span>{deploymentLabels[profile.deployment]} · {basePlanLabels[profile.basePlan]} · {accountModelLabels[profile.accountModel]}</span>
         </div>
         <div className="topbar__actions">
           <button className="link-button topbar__utility-action" onClick={() => navigateTo("profile")} type="button">Edit profile</button>
@@ -542,7 +631,7 @@ function App() {
               type="button"
             >
               <span>Target profile</span>
-              <small>{warnings.length ? "Needs attention" : "Ready"}</small>
+              <small>{resolvedProfile.errors.length > 0 ? "Needs attention" : "Ready"}</small>
             </button>
             {settingsByDomain.map(({ domain, items }) => {
               const reviewableItems = items.filter((item) => item.setting.editable !== false)
@@ -578,20 +667,27 @@ function App() {
         <main className="workspace-main" ref={workspaceRef}>
           {activeSection === "profile" && (
             <ProfileEditor
-              applicableCount={applicableSettings.length}
+              applicableCount={settings.length}
               intent={intent}
+              onAccountModelChange={setAccountModel}
+              onAuthenticationChange={setAuthentication}
+              onBasePlanChange={setBasePlan}
               onBuild={buildPlan}
-              onEntitlementChange={setEntitlement}
+              onCopilotPlanChange={setCopilotPlan}
+              onCurrentStateChange={setCurrentState}
+              onDeploymentChange={setDeployment}
               onIntentChange={setIntentValue}
+              onLicenseStatusChange={setLicenseStatus}
               onOpenDomain={openDomain}
+              onPlanningScopeChange={setPlanningScope}
               onPriorityToggle={togglePriority}
-              onProductChange={setProduct}
-              onProfileValueChange={setProfileValue}
+              onProvisioningChange={setProvisioning}
+              onRepositoryVisibilityChange={setRepositoryVisibility}
               priorities={priorities}
               profile={profile}
               profileValid={profileValid}
+              resolvedProfile={resolvedProfile}
               settings={settings}
-              warnings={warnings}
             />
           )}
 
@@ -671,39 +767,72 @@ function App() {
   )
 }
 
+interface OptionSpec<T extends string> {
+  value: T
+  label: string
+  available: boolean
+  reason?: string
+}
+
+const mapOptions = <T extends string>(
+  options: { value: T; available: boolean; reason?: string }[],
+  labels: Record<T, string>,
+): OptionSpec<T>[] =>
+  options.map((option) => ({
+    value: option.value,
+    label: labels[option.value],
+    available: option.available,
+    reason: option.reason,
+  }))
+
 interface ProfileEditorProps {
   profile: Profile
+  resolvedProfile: ResolvedProfile
   intent: PlanIntent
   priorities: PriorityId[]
-  warnings: string[]
   applicableCount: number
   profileValid: boolean
   settings: RecommendedSetting[]
-  onProfileValueChange: <K extends ProfileKey>(key: K, value: Profile[K]) => void
-  onEntitlementChange: (entitlement: Entitlement) => void
+  onDeploymentChange: (value: Deployment) => void
+  onBasePlanChange: (value: BasePlan) => void
+  onAccountModelChange: (value: AccountModel) => void
+  onAuthenticationChange: (value: AuthenticationMethod) => void
+  onProvisioningChange: (value: ProvisioningMethod) => void
+  onRepositoryVisibilityChange: (value: RepositoryVisibility) => void
+  onCurrentStateChange: (value: CurrentState) => void
+  onLicenseStatusChange: (product: LicensedProductId, status: LicenseStatus) => void
+  onCopilotPlanChange: (value: CopilotPlan) => void
+  onPlanningScopeChange: (scope: PlanningScopeId, enabled: boolean) => void
   onIntentChange: (axis: IntentAxis, value: IntentLevel) => void
   onOpenDomain: (domain: Domain) => void
-  onProductChange: (product: ProductId, enabled: boolean) => void
   onPriorityToggle: (priority: PriorityId) => void
   onBuild: () => void
 }
 
 function ProfileEditor({
   profile,
+  resolvedProfile,
   intent,
   priorities,
-  warnings,
   applicableCount,
   profileValid,
   settings,
-  onProfileValueChange,
-  onEntitlementChange,
+  onDeploymentChange,
+  onBasePlanChange,
+  onAccountModelChange,
+  onAuthenticationChange,
+  onProvisioningChange,
+  onRepositoryVisibilityChange,
+  onCurrentStateChange,
+  onLicenseStatusChange,
+  onCopilotPlanChange,
+  onPlanningScopeChange,
   onIntentChange,
   onOpenDomain,
-  onProductChange,
   onPriorityToggle,
   onBuild,
 }: ProfileEditorProps) {
+  const { errors, warnings, options } = resolvedProfile
   return (
     <section className="profile-editor" aria-labelledby="profile-heading">
       <header className="content-heading content-heading--intro">
@@ -715,28 +844,53 @@ function ProfileEditor({
       </header>
 
       <div className="profile-fields">
-        <SelectField
-          label="Platform and hosting"
-          onChange={(value) => onProfileValueChange("platform", value as Platform)}
-          options={[["dotcom", "GitHub.com"], ["residency", "GHE.com data residency"], ["ghes", "GHES 3.21"]]}
-          value={profile.platform}
+        <ProfileSelect
+          id="deployment"
+          label="Deployment"
+          onChange={onDeploymentChange}
+          options={deployments.map((value) => ({ value, label: deploymentLabels[value], available: true }))}
+          value={profile.deployment}
         />
-        <SelectField
-          label="Identity model"
-          onChange={(value) => onProfileValueChange("identity", value as IdentityModel)}
-          options={[["personal", "Personal accounts"], ["emu", "Enterprise Managed Users (EMU)"]]}
-          value={profile.identity}
+        <ProfileSelect
+          id="base-plan"
+          label="Base plan"
+          onChange={onBasePlanChange}
+          options={mapOptions(options.basePlan, basePlanLabels)}
+          value={profile.basePlan}
         />
-        <SelectField
-          label="Entitlement"
-          onChange={(value) => onEntitlementChange(value as Entitlement)}
-          options={[["enterprise", "Full enterprise"], ["copilot", "Copilot-only"]]}
-          value={profile.entitlement}
+        <ProfileSelect
+          id="account-model"
+          label="Account model"
+          onChange={onAccountModelChange}
+          options={mapOptions(options.accountModel, accountModelLabels)}
+          value={profile.accountModel}
         />
-        <SelectField
+        <ProfileSelect
+          id="authentication"
+          label="Authentication"
+          onChange={onAuthenticationChange}
+          options={mapOptions(options.authentication, authenticationLabels)}
+          value={profile.authentication}
+        />
+        <ProfileSelect
+          id="provisioning"
+          label="Provisioning"
+          onChange={onProvisioningChange}
+          options={mapOptions(options.provisioning, provisioningLabels)}
+          value={profile.provisioning}
+        />
+        <ProfileSelect
+          id="repository-visibility"
+          label="Repository visibility"
+          onChange={onRepositoryVisibilityChange}
+          options={mapOptions(options.repositoryVisibility, repositoryVisibilityLabels)}
+          value={profile.repositoryVisibility}
+        />
+        <ProfileSelect
+          id="current-state"
           label="Current state"
-          onChange={(value) => onProfileValueChange("currentState", value as CurrentState)}
-          options={[["greenfield", "Greenfield"], ["existing", "Existing environment"], ["migration", "Migration"], ["unknown", "Unknown / discovery needed"]]}
+          onChange={onCurrentStateChange}
+          options={currentStates.map((value) => ({ value, label: currentStateLabels[value], available: true }))}
           value={profile.currentState}
         />
       </div>
@@ -747,18 +901,41 @@ function ProfileEditor({
       </div>
 
       <fieldset className="flat-fieldset">
-        <legend>Enabled products</legend>
+        <legend>Security &amp; Copilot licensing</legend>
+        <p>License status gates which security and Copilot decisions are applicable to this plan.</p>
+        <div className="profile-fields">
+          {licensedProductOrder.map((product) => (
+            <ProfileSelect
+              id={`license-${product}`}
+              key={product}
+              label={licensedProductLabels[product]}
+              onChange={(value) => onLicenseStatusChange(product, value)}
+              options={mapOptions(options.licensedProducts[product], licenseStatusLabels)}
+              value={profile.licensedProducts[product]}
+            />
+          ))}
+          <ProfileSelect
+            id="copilot-plan"
+            label="Copilot plan"
+            onChange={onCopilotPlanChange}
+            options={mapOptions(options.copilot, copilotPlanLabels)}
+            value={profile.licensedProducts.copilot}
+          />
+        </div>
+      </fieldset>
+
+      <fieldset className="flat-fieldset">
+        <legend>Planning scope</legend>
         <p>Only relevant domains and decisions will appear in your path.</p>
-        <div className="check-list check-list--products">
-          {(Object.keys(productLabels) as ProductId[]).map((product) => (
-            <label key={product}>
+        <div className="check-list">
+          {planningScopeOrder.map((scope) => (
+            <label key={scope}>
               <input
-                checked={profile.products[product]}
-                disabled={profile.entitlement === "copilot" && product !== "copilot"}
-                onChange={(event) => onProductChange(product, event.target.checked)}
+                checked={profile.planningScope[scope]}
+                onChange={(event) => onPlanningScopeChange(scope, event.target.checked)}
                 type="checkbox"
               />
-              <span>{productLabels[product]}</span>
+              <span>{planningScopeLabels[scope]}</span>
             </label>
           ))}
         </div>
@@ -790,20 +967,60 @@ function ProfileEditor({
         settings={settings}
       />
 
-      {warnings.length > 0 && (
+      {errors.length > 0 && (
         <div className="validation-notice" role="alert">
           <strong>Resolve this profile before continuing</strong>
-          <ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+          <ul>{errors.map((issue) => <li key={issue.code}>{issue.message}</li>)}</ul>
+        </div>
+      )}
+
+      {warnings.length > 0 && (
+        <div className="validation-notice" role="status">
+          <strong>Worth noting</strong>
+          <ul>{warnings.map((issue) => <li key={issue.code}>{issue.message}</li>)}</ul>
         </div>
       )}
 
       <footer className="profile-actions">
         <span>{applicableCount} settings will be included in this path.</span>
-        <button className="button button--primary" disabled={warnings.length > 0} onClick={onBuild} type="button">
+        <button className="button button--primary" disabled={!profileValid} onClick={onBuild} type="button">
           Build recommended plan
         </button>
       </footer>
     </section>
+  )
+}
+
+interface ProfileSelectProps<T extends string> {
+  id: string
+  label: string
+  value: T
+  options: OptionSpec<T>[]
+  onChange: (value: T) => void
+}
+
+function ProfileSelect<T extends string>({ id, label, value, options, onChange }: ProfileSelectProps<T>) {
+  const current = options.find((option) => option.value === value)
+  const showReason = Boolean(current && !current.available && current.reason)
+  const reasonId = `${id}-reason`
+  return (
+    <label className="select-field">
+      <span>{label}</span>
+      <span className="select-field__control">
+        <select
+          aria-describedby={showReason ? reasonId : undefined}
+          onChange={(event) => onChange(event.target.value as T)}
+          value={value}
+        >
+          {options.map((option) => (
+            <option disabled={!option.available} key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {showReason && <small className="select-field__reason" id={reasonId}>{current?.reason}</small>}
+      </span>
+    </label>
   )
 }
 
@@ -982,24 +1199,6 @@ function ReviewContext() {
         <p>JSON is a desired-state contract for future adapters. Markdown is intended for review and decision records. Neither applies settings.</p>
       </section>
     </>
-  )
-}
-
-interface SelectFieldProps {
-  label: string
-  value: string
-  options: [string, string][]
-  onChange: (value: string) => void
-}
-
-function SelectField({ label, value, options, onChange }: SelectFieldProps) {
-  return (
-    <label className="select-field">
-      <span>{label}</span>
-      <select onChange={(event) => onChange(event.target.value)} value={value}>
-        {options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}
-      </select>
-    </label>
   )
 }
 
