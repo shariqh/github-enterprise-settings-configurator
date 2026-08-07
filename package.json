@@ -8,6 +8,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "product-watch": "node tooling/product-watch/cli.mjs",
+    "product-watch:test": "node --test tooling/product-watch/test/*.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
