@@ -269,12 +269,24 @@ function isTrackedGhesVersion(version, ghesRelease) {
   return compareGhesVersions(version, maxGhesVersion(ghesRelease.modeledVersions)) > 0;
 }
 
-function parseHtmlTable(html) {
-  const tableMatch = String(html).match(/<table\b[^>]*>([\s\S]*?)<\/table>/i);
-  if (!tableMatch) {
-    return {headers: [], rows: []};
-  }
-  const rowMatches = [...tableMatch[1].matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)];
+// Header substrings that must all be present (case-insensitively) for a
+// table to be treated as the GHES "all releases" index, rather than blindly
+// trusting the first <table> on the page. This lets parsing skip an
+// unrelated table (for example a "supported browsers" or "migration path"
+// table) that happens to precede the real releases table, and it lets a
+// page whose releases table has lost its expected structure fail to match
+// any table at all -- which is then caught as a structural invariant
+// violation below instead of silently returning zero entries.
+const GHES_RELEASES_TABLE_REQUIRED_HEADERS = ["version", "supported", "release notes"];
+
+function isGhesReleasesTableHeader(headers) {
+  return GHES_RELEASES_TABLE_REQUIRED_HEADERS.every(
+    (name) => tableColumnIndex(headers, name) >= 0,
+  );
+}
+
+function parseTableRows(tableInnerHtml) {
+  const rowMatches = [...tableInnerHtml.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)];
   const rows = rowMatches.map((rowMatch) => {
     const cellMatches = [...rowMatch[1].matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)];
     return cellMatches.map((cellMatch) => {
@@ -284,9 +296,28 @@ function parseHtmlTable(html) {
     });
   });
   if (rows.length === 0) {
-    return {headers: [], rows: []};
+    return null;
   }
   return {headers: rows[0].map((cell) => cell.text.toLowerCase()), rows: rows.slice(1)};
+}
+
+/**
+ * Finds the intended GHES releases table among every <table> on the page,
+ * rather than assuming it is the first one. A table only matches when its
+ * header row contains all of `GHES_RELEASES_TABLE_REQUIRED_HEADERS`; any
+ * earlier unrelated table (e.g. one without a "Supported" or "Release
+ * notes" column) is skipped. If no table matches, an empty result is
+ * returned so the caller's structural invariant check can fail closed.
+ */
+function parseHtmlTable(html) {
+  const tableMatches = [...String(html).matchAll(/<table\b[^>]*>([\s\S]*?)<\/table>/gi)];
+  for (const tableMatch of tableMatches) {
+    const parsed = parseTableRows(tableMatch[1]);
+    if (parsed && isGhesReleasesTableHeader(parsed.headers)) {
+      return parsed;
+    }
+  }
+  return {headers: [], rows: []};
 }
 
 function tableColumnIndex(headers, name) {
@@ -358,6 +389,28 @@ export function parseGhesReleaseIndex(raw, source) {
       ghesReleaseKind: GHES_RELEASE_KINDS.LIFECYCLE,
     });
   }
+
+  // Structural invariant: the configured modeled baseline must always be
+  // present in a successfully parsed releases table. If the page structure
+  // changes (an unmatched table, a renamed/removed column, or any other
+  // drift `parseHtmlTable` can't route around) this row set will silently
+  // come back incomplete or empty. Rather than let a caller treat that as a
+  // successful scan with zero discovery, fail closed here: this throws, is
+  // caught as a per-source ingestion error, and keeps issue-backed state
+  // from advancing so the next scheduled run retries.
+  const modeledVersions = source.ghesRelease?.modeledVersions ?? [];
+  const foundVersions = new Set(versions.map((entry) => entry.version));
+  const missingModeledVersions = modeledVersions.filter(
+    (version) => !foundVersions.has(version),
+  );
+  if (missingModeledVersions.length > 0) {
+    throw new Error(
+      `GHES release index at ${source.url} is missing expected modeled version(s): ${
+        missingModeledVersions.join(", ")
+      }. The releases table may be missing, restructured, or preceded by an unrelated table. Refusing to advance product-watch state.`,
+    );
+  }
+
   return {entries, versions};
 }
 

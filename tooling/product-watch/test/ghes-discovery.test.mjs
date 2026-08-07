@@ -115,6 +115,83 @@ test("parseGhesReleaseIndex extracts full version metadata and tracked-only life
   assert.ok(entries.some((entry) => entry.sourceVersion === "3.22"));
 });
 
+test("release-index parsing skips a preceding unrelated table and still finds the true releases table", () => {
+  const source = {
+    id: "ghes-release-index",
+    label: "GitHub Enterprise Server all releases",
+    url: "https://docs.github.com/en/enterprise-server@3.21/admin/all-releases",
+    kind: "ghes-release-index",
+    deployments: ["ghes"],
+    ghesRelease: configV2.ghesRelease,
+  };
+  const {entries, versions} = parseGhesReleaseIndex(
+    ghesFixtures["ghes-release-index-preceded-by-unrelated-table"],
+    source,
+  );
+  assert.equal(versions.length, 3, "the real releases table is still found and fully parsed");
+  assert.ok(versions.some((row) => row.version === "3.21"));
+  assert.ok(versions.some((row) => row.version === "3.22"));
+  assert.ok(entries.some((entry) => entry.sourceVersion === "3.21"));
+});
+
+test("release-index parsing fails closed when the releases table is missing or restructured", () => {
+  const source = {
+    id: "ghes-release-index",
+    label: "GitHub Enterprise Server all releases",
+    url: "https://docs.github.com/en/enterprise-server@3.21/admin/all-releases",
+    kind: "ghes-release-index",
+    deployments: ["ghes"],
+    ghesRelease: configV2.ghesRelease,
+  };
+  assert.throws(
+    () => parseGhesReleaseIndex(ghesFixtures["ghes-release-index-malformed"], source),
+    /missing expected modeled version/,
+  );
+});
+
+test("a malformed or restructured releases table is a source failure that never advances issue-backed state", async () => {
+  const githubClient = {
+    async listIssues() {
+      throw new Error("must not be called: ingestion must fail before any GitHub read");
+    },
+    async ensureLabel() {
+      throw new Error("must not be called: labels must not be ensured on a failed parse");
+    },
+    async createIssue() {
+      throw new Error("must not be called: no issue may be created on a failed parse");
+    },
+    async updateIssue() {
+      throw new Error("must not be called: state must not advance on a failed parse");
+    },
+  };
+
+  const report = await runProductWatch({
+    config: configV2,
+    repository: "owner/repo",
+    token: "not-used",
+    dryRun: false,
+    fixtureSources: v2FixtureSources({
+      "ghes-release-index": ghesFixtures["ghes-release-index-malformed"],
+    }),
+    githubClient,
+    now: () => new Date("2026-09-02T12:00:00Z"),
+  });
+
+  assert.equal(report.status, "partial-source-failure");
+  assert.ok(report.errors.some((error) => error.sourceId === "ghes-release-index"));
+  assert.equal(report.stateAdvanced, false);
+  assert.equal(
+    report.actions.length,
+    0,
+    "no issue actions may be planned when the releases table cannot be parsed",
+  );
+  assert.equal(
+    report.candidates.some((candidate) => candidate.ghesCandidateType === GHES_RELEASE_KINDS.VERSION_DISCOVERED),
+    false,
+    "discovery must not run against an unparseable index",
+  );
+});
+
 test("buildVersionDiscoveredEntry always defaults to unavailable/unmodeled, even without release notes", () => {
   const row = {
     version: "3.22",
@@ -419,4 +496,134 @@ test("schemaVersion 2 validation rejects a GHES-versioned source URL outside the
       : source
   );
   assert.throws(() => validateConfig(tampered), /disallowed host/);
+});
+
+// Maps each configured static source's real URL to its fixture content, plus
+// the templated discovered-version release-notes URL, so the redirect tests
+// below can drive `runProductWatch` with `fixtureSources: null` and a fully
+// custom `fetchImpl` -- this is required to actually exercise the runner's
+// fetch call sites (`fetchText`/`fetchTextFromUrl`), which are bypassed
+// entirely when `fixtureSources` is supplied.
+function urlFixtureMap() {
+  const byId = v2FixtureSources();
+  const map = {};
+  for (const source of configV2.sources) {
+    map[source.url] = byId[source.id];
+  }
+  map["https://docs.github.com/en/enterprise-server@3.22/admin/release-notes"] =
+    ghesFixtures["https://docs.github.com/en/enterprise-server@3.22/admin/release-notes"];
+  return map;
+}
+
+test("a redirect response from the release-index source is not followed and fails closed without advancing state", async () => {
+  const targetUrl = "https://docs.github.com/en/enterprise-server@3.21/admin/all-releases";
+  const fixturesByUrl = urlFixtureMap();
+  const callCounts = {};
+  const fetchImpl = async (url, options) => {
+    const key = String(url);
+    callCounts[key] = (callCounts[key] ?? 0) + 1;
+    assert.equal(options.redirect, "manual", `expected redirect: "manual" for ${key}`);
+    if (key === targetUrl) {
+      return {
+        ok: false,
+        status: 301,
+        statusText: "Moved Permanently",
+        text: async () => {
+          throw new Error("must not read a redirect response body");
+        },
+      };
+    }
+    if (key in fixturesByUrl) {
+      return {ok: true, status: 200, statusText: "OK", text: async () => fixturesByUrl[key]};
+    }
+    throw new Error(`Unexpected fetch for ${key}`);
+  };
+
+  const githubClient = {
+    async listIssues() {
+      throw new Error("must not be called: ingestion must fail before any GitHub read");
+    },
+    async ensureLabel() {
+      throw new Error("must not be called");
+    },
+    async createIssue() {
+      throw new Error("must not be called: state must not advance on a redirected source");
+    },
+    async updateIssue() {
+      throw new Error("must not be called: state must not advance on a redirected source");
+    },
+  };
+
+  const report = await runProductWatch({
+    config: configV2,
+    repository: "owner/repo",
+    token: "not-used",
+    dryRun: false,
+    fixtureSources: null,
+    fetchImpl,
+    githubClient,
+    now: () => new Date("2026-09-02T12:00:00Z"),
+  });
+
+  assert.equal(report.status, "partial-source-failure");
+  assert.ok(report.errors.some((error) => error.sourceId === "ghes-release-index"));
+  assert.equal(
+    callCounts[targetUrl],
+    1,
+    "a disallowed redirect must not be followed with a second request",
+  );
+  assert.equal(report.stateAdvanced, false);
+});
+
+test("a redirect response for a discovered version's release notes is not followed and defaults that version to unavailable", async () => {
+  const rcUrl = "https://docs.github.com/en/enterprise-server@3.22/admin/release-notes";
+  const fixturesByUrl = urlFixtureMap();
+  const callCounts = {};
+  const fetchImpl = async (url, options) => {
+    const key = String(url);
+    callCounts[key] = (callCounts[key] ?? 0) + 1;
+    assert.equal(options.redirect, "manual", `expected redirect: "manual" for ${key}`);
+    if (key === rcUrl) {
+      return {
+        ok: false,
+        status: 302,
+        statusText: "Found",
+        text: async () => {
+          throw new Error("must not read a redirect response body");
+        },
+      };
+    }
+    if (key in fixturesByUrl) {
+      return {ok: true, status: 200, statusText: "OK", text: async () => fixturesByUrl[key]};
+    }
+    throw new Error(`Unexpected fetch for ${key}`);
+  };
+
+  const report = await runProductWatch({
+    config: configV2,
+    repository: "owner/repo",
+    token: "",
+    dryRun: true,
+    fixtureSources: null,
+    fetchImpl,
+    now: () => new Date("2026-09-02T12:00:00Z"),
+  });
+
+  assert.equal(report.status, "dry-run");
+  assert.equal(
+    report.errors.length,
+    0,
+    "a per-version discovery redirect must not fail overall ingestion",
+  );
+  assert.equal(
+    callCounts[rcUrl],
+    1,
+    "a disallowed redirect must not be followed with a second request",
+  );
+  const discovered = report.candidates.find(
+    (candidate) => candidate.ghesCandidateType === GHES_RELEASE_KINDS.VERSION_DISCOVERED,
+  );
+  assert.ok(discovered, "the discovered version must still get a review candidate");
+  assert.match(discovered.summary, /could not be retrieved/);
+  assert.match(discovered.summary, /302 Found/);
 });

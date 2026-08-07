@@ -72,6 +72,15 @@ function titleFor(candidate) {
   return title.length <= 256 ? title : `${title.slice(0, 252)}...`;
 }
 
+// `redirect: "manual"` is required on every docs fetch, static or dynamic:
+// the default fetch behavior transparently follows redirects to whatever
+// host/path the response's `Location` header names, which would let a
+// compromised or misconfigured docs page redirect an otherwise-allowed
+// request off the authoritative host/path allow-list enforced by
+// `assertAllowedDocsUrl`. With redirects left unfollowed, a 3xx response
+// falls through the existing `!response.ok` check below and is treated the
+// same as any other source failure -- fail closed, one request, no
+// automatic hop to an unvalidated URL.
 async function fetchText(source, config, fetchImpl) {
   const response = await fetchImpl(source.url, {
     headers: {
@@ -80,6 +89,7 @@ async function fetchText(source, config, fetchImpl) {
         : "text/html, application/xhtml+xml;q=0.9",
       "User-Agent": config.request.userAgent,
     },
+    redirect: "manual",
     signal: AbortSignal.timeout(config.request.timeoutMs),
   });
   if (!response.ok) {
@@ -94,6 +104,7 @@ async function fetchTextFromUrl(url, config, fetchImpl) {
       Accept: "text/html, application/xhtml+xml;q=0.9",
       "User-Agent": config.request.userAgent,
     },
+    redirect: "manual",
     signal: AbortSignal.timeout(config.request.timeoutMs),
   });
   if (!response.ok) {
