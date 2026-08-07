@@ -32,7 +32,7 @@
       "id": "github-docs-code-security-configurations",
       "label": "GitHub Docs: security configurations",
       "kind": "html-page",
-      "url": "https://docs.github.com/en/code-security/securing-your-organization/enabling-security-features-in-your-organization/configuring-global-security-settings-for-your-organization",
+      "url": "https://docs.github.com/en/code-security/how-tos/secure-at-scale/configure-organization-security/establish-complete-coverage/configure-global-settings",
       "deployments": ["ghec", "ghe.com", "ghes"]
     },
     {
