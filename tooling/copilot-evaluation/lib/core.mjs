@@ -1,25 +1,34 @@
+import {parseIssueMarkers as parseProducerIssueMarkers} from "../../product-watch/lib/core.mjs";
+
 export const REVIEW_LABEL = "product-watch:review";
 export const MAX_ISSUES_PER_RUN = 5;
+export const MAX_COMMENT_CHARS = 60000;
 export const EVALUATION_MARKER_PREFIX = "product-watch:agent-evaluation";
 export const EVALUATION_WORKFLOW_ID = "copilot-product-watch-evaluation";
 export const EVALUATION_WORKFLOW_MARKER =
   `<!-- gh-aw-workflow-id: ${EVALUATION_WORKFLOW_ID} -->`;
 
-const PRODUCT_WATCH_MARKER_PATTERN = {
-  candidateKey: /<!-- product-watch:key:([a-f0-9]{64}) -->/,
-  fingerprint: /<!-- product-watch:fingerprint:([a-f0-9]{64}) -->/,
-  managed: /<!-- product-watch:managed -->/,
-};
+const CANDIDATE_KEY_PATTERN = /^[a-f0-9]{24}$/;
+const FINGERPRINT_PATTERN = /^[a-f0-9]{64}$/;
+const MANAGED_MARKER = "<!-- product-watch:managed -->";
+const EVALUATION_MARKER_PATTERN =
+  /<!--\s*product-watch:agent-evaluation:([^>]*)-->/g;
 
 function labelName(label) {
   return typeof label === "string" ? label : label?.name;
 }
 
 export function parseProductWatchMarkers(body = "") {
+  const text = String(body);
+  const producerMarkers = parseProducerIssueMarkers(text);
   return {
-    candidateKey: String(body).match(PRODUCT_WATCH_MARKER_PATTERN.candidateKey)?.[1] ?? null,
-    fingerprint: String(body).match(PRODUCT_WATCH_MARKER_PATTERN.fingerprint)?.[1] ?? null,
-    managed: PRODUCT_WATCH_MARKER_PATTERN.managed.test(String(body)),
+    candidateKey: CANDIDATE_KEY_PATTERN.test(producerMarkers.candidateKey ?? "")
+      ? producerMarkers.candidateKey
+      : null,
+    fingerprint: FINGERPRINT_PATTERN.test(producerMarkers.fingerprint ?? "")
+      ? producerMarkers.fingerprint
+      : null,
+    managed: text.includes(MANAGED_MARKER),
   };
 }
 
@@ -40,7 +49,7 @@ export function isManagedReviewIssue(issue) {
 }
 
 export function evaluationMarker(fingerprint) {
-  if (!/^[a-f0-9]{64}$/.test(fingerprint)) {
+  if (!FINGERPRINT_PATTERN.test(fingerprint)) {
     throw new Error("Evaluation markers require a 64-character lowercase hexadecimal fingerprint.");
   }
   return `<!-- ${EVALUATION_MARKER_PREFIX}:${fingerprint} -->`;
@@ -109,7 +118,10 @@ export function selectIssuesForEvaluation(
 
 export function enforceEvidenceDefaults(evaluation) {
   const normalized = {...evaluation};
-  if (normalized.evidenceVerdict === "not documented") {
+  if (
+    normalized.evidenceVerdict === "not documented"
+    || normalized.evidenceVerdict === "unsupported"
+  ) {
     normalized.effectiveDefault = "no";
     normalized.effectiveAvailability = "no";
   }
@@ -142,8 +154,18 @@ function fieldValue(body, label) {
 
 export function validateEvaluationComment(body, fingerprint) {
   const text = String(body ?? "");
-  const marker = evaluationMarker(fingerprint);
-  if (text.split(marker).length !== 2) {
+  if (text.length > MAX_COMMENT_CHARS) {
+    throw new Error(`Comment body must not exceed ${MAX_COMMENT_CHARS} characters.`);
+  }
+  if (text.includes(EVALUATION_WORKFLOW_MARKER)) {
+    throw new Error("Workflow identity marker is added by the safe-output job.");
+  }
+  rejectRichLinkSyntax(text);
+  const markers = [...text.matchAll(EVALUATION_MARKER_PATTERN)];
+  if (
+    markers.length !== 1
+    || markers[0][0] !== evaluationMarker(fingerprint)
+  ) {
     throw new Error("Comment must contain the exact evaluation marker once.");
   }
 
@@ -160,10 +182,10 @@ export function validateEvaluationComment(body, fingerprint) {
     throw new Error("Effective availability must be yes or no.");
   }
   if (
-    evidenceVerdict === "not documented"
+    (evidenceVerdict === "not documented" || evidenceVerdict === "unsupported")
     && (effectiveDefault !== "no" || effectiveAvailability !== "no")
   ) {
-    throw new Error("Not documented evidence must keep default and availability at no.");
+    throw new Error("Unsupported or not documented evidence must keep default and availability at no.");
   }
 
   for (const label of REQUIRED_COMMENT_FIELDS) {
@@ -184,21 +206,32 @@ export function validateEvaluationComment(body, fingerprint) {
     throw new Error("Recommended human disposition must use a product-watch disposition.");
   }
 
-  const evidenceUrls = fieldValue(text, "Authoritative evidence").match(/https:\/\/[^\s)]+/g) ?? [];
-  const hasAuthoritativeUrl = evidenceUrls.some((value) => {
-    const url = new URL(value);
-    return url.hostname === "docs.github.com"
-      || url.hostname === "github.blog"
-      || (url.hostname === "github.com" && url.pathname.startsWith("/github/"));
-  });
-  if (!hasAuthoritativeUrl) {
+  const allUrls = extractCommentUrls(text);
+  for (const value of allUrls) {
+    if (!isAllowedAuthoritativeUrl(value) && !isGitHubCrossReferenceUrl(value)) {
+      throw new Error(`Comment URL is not an allowed authoritative GitHub source: ${value}`);
+    }
+  }
+
+  const fieldEvidenceUrls = extractCommentUrls(fieldValue(text, "Authoritative evidence"))
+    .filter(isAllowedAuthoritativeUrl);
+  if (fieldEvidenceUrls.length === 0) {
     throw new Error("Authoritative evidence must include a GitHub Docs, Changelog, or GitHub-maintained source URL.");
   }
+  const affirmative = evidenceVerdict === "supported"
+    || effectiveDefault === "yes"
+    || effectiveAvailability === "yes";
+  if (affirmative && !fieldEvidenceUrls.some(isAuthoritativeDocsUrl)) {
+    throw new Error("Affirmative support requires an authoritative GitHub Docs URL.");
+  }
+  const evidenceUrls = allUrls.filter(isAllowedAuthoritativeUrl);
 
   return {
     evidenceVerdict,
     effectiveDefault,
     effectiveAvailability,
+    evidenceUrls,
+    affirmative,
   };
 }
 
@@ -221,10 +254,169 @@ export function validateCommentRequests(requests, allowedIssues) {
       throw new Error(`Only one comment is allowed for issue ${issueNumber}.`);
     }
     seen.add(issueNumber);
-    validateEvaluationComment(request.body, issue.fingerprint);
+    const evaluation = validateEvaluationComment(request.body, issue.fingerprint);
+    const body = neutralizeGitHubReferences(String(request.body).trim());
+    if (body.length > MAX_COMMENT_CHARS) {
+      throw new Error(`Sanitized comment body must not exceed ${MAX_COMMENT_CHARS} characters.`);
+    }
+    const finalBody = `${body}\n\n${EVALUATION_WORKFLOW_MARKER}`;
+    if (finalBody.length > MAX_COMMENT_CHARS) {
+      throw new Error(`Final comment body must not exceed ${MAX_COMMENT_CHARS} characters.`);
+    }
     return {
       number: issue.number,
-      body: `${String(request.body).trim()}\n\n${EVALUATION_WORKFLOW_MARKER}`,
+      body: finalBody,
+      candidateKey: issue.candidateKey,
+      fingerprint: issue.fingerprint,
+      evidenceUrls: evaluation.evidenceUrls,
+      affirmative: evaluation.affirmative,
     };
   });
+}
+
+export function isAllowedAuthoritativeUrl(value) {
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== "https:"
+      || url.username
+      || url.password
+      || url.port
+      || url.pathname === "/"
+    ) {
+      return false;
+    }
+    if (url.hostname === "docs.github.com") {
+      return true;
+    }
+    if (url.hostname === "github.blog") {
+      return url.pathname.startsWith("/changelog/");
+    }
+    if (url.hostname === "github.com" && url.pathname.startsWith("/github/")) {
+      return !/\/(?:issues|pull)\/\d+(?:\/|$)/.test(url.pathname);
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function decodeReferenceEntities(value) {
+  return String(value)
+    .replace(/&#(x[0-9a-f]+|\d+);/gi, (entity, code) => {
+      const codePoint = Number.parseInt(
+        code.startsWith("x") || code.startsWith("X") ? code.slice(1) : code,
+        code.startsWith("x") || code.startsWith("X") ? 16 : 10,
+      );
+      return Number.isInteger(codePoint) && codePoint >= 0 && codePoint <= 0x7F
+        ? String.fromCodePoint(codePoint)
+        : entity;
+    })
+    .replace(/&(?:colon|#0*58|#x0*3a);/gi, ":")
+    .replace(/&(?:sol|#0*47|#x0*2f);/gi, "/")
+    .replace(/&(?:bsol|#0*92|#x0*5c);/gi, "\\")
+    .replace(/&(?:period|#0*46|#x0*2e);/gi, ".")
+    .replace(/&(?:num|#0*35|#x0*23);/gi, "#")
+    .replace(/&(?:commat|#0*64|#x0*40);/gi, "@")
+    .replace(/&lbrack;/gi, "[")
+    .replace(/&rbrack;/gi, "]")
+    .replace(/&lpar;/gi, "(")
+    .replace(/&rpar;/gi, ")")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&")
+    .replace(/\\([^\w\s])/g, "$1");
+}
+
+function rejectRichLinkSyntax(value) {
+  const decoded = decodeReferenceEntities(value);
+  if (
+    /[[\]]/.test(decoded)
+    || /<\s*a\b/i.test(decoded)
+    || /\b(?:href|src)\s*=/i.test(decoded)
+    || /<(?:[a-z][a-z0-9+.-]*:|[^<>\s@]+@[^<>\s@]+)[^<>]*>/i.test(decoded)
+    || /\b(?!https?:)[a-z][a-z0-9+.-]*:\/\/\S+/i.test(decoded)
+    || /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(decoded)
+  ) {
+    throw new Error("Comments must use bare HTTPS URLs; rich links and email autolinks are not allowed.");
+  }
+}
+
+function trimAutolinkPunctuation(value) {
+  return value.replace(/[.,;:!?#[\]{}]+$/g, "");
+}
+
+function extractCommentUrls(value) {
+  const decoded = decodeReferenceEntities(value);
+  const urls = [];
+  for (const match of decoded.matchAll(/\bhttps?:\/\/[^\s)>`"'<>\u005B\u005D]+/gi)) {
+    urls.push(new URL(trimAutolinkPunctuation(match[0])).toString());
+  }
+  for (const match of decoded.matchAll(/(?:^|[\s("'=])(\/\/[^\s)>`"'<>\u005B\u005D]+)/g)) {
+    urls.push(new URL(`https:${trimAutolinkPunctuation(match[1])}`).toString());
+  }
+  for (const match of decoded.matchAll(/\bwww\.[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:\/[^\s)>`"'<>\u005B\u005D]*)?/gi)) {
+    urls.push(new URL(`https://${trimAutolinkPunctuation(match[0])}`).toString());
+  }
+  return [...new Set(urls)];
+}
+
+function isGitHubCrossReferenceUrl(value) {
+  try {
+    const url = new URL(value);
+    return (
+      (url.hostname === "github.com" || url.hostname === "www.github.com")
+      && /^\/[^/]+\/[^/]+\/(?:issues|pull)\/\d+(?:\/|$)/.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isAuthoritativeDocsUrl(value) {
+  if (!isAllowedAuthoritativeUrl(value)) {
+    return false;
+  }
+  const url = new URL(value);
+  return url.hostname === "docs.github.com";
+}
+
+export function neutralizeGitHubReferences(value) {
+  return decodeReferenceEntities(value)
+    .replace(
+      /(?:https?:)?\/\/(?:www\.)?github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/(issues|pull)\/(\d+)/gi,
+      "https://github.com/$1/$2/$3/\u200B$4",
+    )
+    .replace(
+      /(^|[\s(])\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/(issues|pull)\/(\d+)/g,
+      "$1/$2/$3/$4/\u200B$5",
+    )
+    .replace(
+      /(^|[^\w@])@([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))/g,
+      "$1@\u200B$2",
+    )
+    .replace(/\bGH-(\d+)\b/gi, "GH-\u200B$1")
+    .replace(
+      /\b([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)#(\d+)\b/g,
+      "$1#\u200B$2",
+    )
+    .replace(/(^|[^\w])#(\d+)\b/g, "$1#\u200B$2");
+}
+
+export function validateLiveSelectedIssue(liveIssue, selectedIssue, comments = []) {
+  if (!isManagedReviewIssue(liveIssue)) {
+    throw new Error(`Selected issue ${selectedIssue.number} is no longer an open managed review issue.`);
+  }
+  const markers = parseProductWatchMarkers(liveIssue.body);
+  if (
+    Number(liveIssue.number) !== Number(selectedIssue.number)
+    || markers.candidateKey !== selectedIssue.candidateKey
+    || markers.fingerprint !== selectedIssue.fingerprint
+  ) {
+    throw new Error(`Selected issue ${selectedIssue.number} changed after selection.`);
+  }
+  if (evaluatedFingerprints(comments).has(selectedIssue.fingerprint)) {
+    throw new Error(`Selected issue ${selectedIssue.number} was already evaluated during this run.`);
+  }
+  return true;
 }

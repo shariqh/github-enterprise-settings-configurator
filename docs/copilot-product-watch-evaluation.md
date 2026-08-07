@@ -17,21 +17,45 @@ workflow `GITHUB_TOKEN` do not recursively trigger another workflow.
 Before Copilot starts, a deterministic selector:
 
 1. Queries open issues with the `product-watch:review` label.
-2. Requires valid 64-character `product-watch:key` and
-   `product-watch:fingerprint` body markers plus the
+2. Uses the producer's marker parser and requires the real 24-character
+   `product-watch:key`, 64-character `product-watch:fingerprint`, and
    `product-watch:managed` sentinel.
 3. Reads comments only on those managed issues.
 4. Skips fingerprints already carrying the exact
    `product-watch:agent-evaluation:FINGERPRINT` comment marker.
 5. Selects at most five new or changed fingerprints.
-6. Emits a `noop` safe output when there is no work, avoiding inference cost.
+6. Persists the exact selected issue number, candidate key, and fingerprint as
+   a run artifact before agent execution.
+7. Emits a `noop` safe output through gh-aw's generated safe-output path when
+   there is no work. The Copilot harness detects it before inference, so no AI
+   Credits are consumed.
 
 The agent has read-only contents, issues, and pull-request permissions. The
 only configured write safe output is a custom job that adds up to five
-comments. Before posting anything, it recomputes the live managed-issue
-allowlist and validates every target, exact fingerprint marker, required
-field, authoritative GitHub evidence URL, and the `not documented` default-no
-rule. A malformed batch posts nothing. Failed jobs cannot create fallback issues.
+comments. It validates requests against the immutable selection artifact, then
+re-fetches each selected target and requires unchanged open state, review
+label, managed marker, candidate key, and fingerprint. Before posting anything,
+it also validates the 60,000-character limit, one current evaluation marker,
+unique required fields, authoritative GitHub evidence URLs, and the
+`unsupported`/`not documented` default-no rule. Mentions and GitHub issue/PR
+cross-reference forms are neutralized to prevent notifications and timeline
+links. Comments permit bare HTTPS URLs only; Markdown, reference-style, HTML,
+non-HTTPS URI, and email autolink syntax is rejected so visible text cannot
+hide an unverified destination.
+
+The job fetches every cited evidence URL with HTTPS-only, allowlisted
+GitHub hosts/paths, at most three allowlisted redirects, and a required 2xx
+response. Affirmative support additionally requires a reachable GitHub Docs
+URL. This verifies reachability, not semantic relevance; the analyst and human
+reviewer remain responsible for whether the source proves the claim. gh-aw
+v0.85.4 does not expose a cryptographically bindable per-`web-fetch` retrieval
+record to the custom safe job, so the prompt requires same-run retrieval but
+the safe job can enforce only the cited URL's live reachability.
+
+A malformed batch posts nothing. Comment API calls are sequential and GitHub
+does not provide a transaction: a network/API failure after one successful
+comment can leave a partially posted batch, which the job reports explicitly.
+Failed jobs cannot create fallback issues.
 The per-run inference budget is 100 AI Credits, with a separate 50-credit
 threat-detection cap.
 
@@ -88,13 +112,17 @@ repository:
 ```bash
 gh extension install github/gh-aw
 gh aw version
-gh aw compile copilot-product-watch-evaluation --validate
+gh aw compile copilot-product-watch-evaluation --validate --strict
 gh aw validate copilot-product-watch-evaluation --strict
 ```
 
 `gh aw compile` pins generated actions and dependencies in the lock workflow.
-Do not hand-edit the lock file. The checked-in lock was generated with
-`gh-aw v0.85.4`.
+The checked-in source actions use full commit SHAs instead of mutable major
+tags. Compiler-generated action families use the embedded pins from the exact
+`gh-aw v0.85.4` binary; `.github/aw/actions-lock.json` retains the
+non-embedded gh-aw setup resolution. Do not hand-edit either lock. Two clean
+strict compiles with v0.85.4 must produce byte-identical source and action
+locks.
 
 `gh aw audit` operates on a completed workflow run ID, so it cannot run before
 the authentication prerequisite is met and the workflow has executed. After
@@ -110,7 +138,15 @@ Local policy and fixture tests:
 pnpm copilot-evaluation:test
 ```
 
+The evaluation tests are not yet wired into `.github/workflows/ci.yml` because
+that workflow is being introduced independently. Until that branch lands and
+this branch is refreshed from `main`, PR validation must run
+`pnpm copilot-evaluation:test` explicitly. Adding it to CI is a required
+pre-merge integration step after coordination with the CI branch owner.
+
 The separate `.github/agents/product-watch-implementation.agent.md` profile is
-manual-only. It requires an explicit maintainer approval comment, may open at
-most one draft pull request, runs project checks, never merges, and preserves
-default-no behavior unless new authoritative evidence resolves availability.
+manual-only and model invocation is disabled. Human invocation is the approval
+for the stated scope. Its mechanical tools are limited to read, search, and
+edit, so it can prepare a patch but cannot run shell/Git commands, push, publish
+or ready a pull request, enable auto-merge, or merge. A human or coordinator
+must run the documented checks and explicitly publish reviewed changes.

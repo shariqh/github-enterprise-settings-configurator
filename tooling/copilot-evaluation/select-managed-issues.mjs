@@ -71,6 +71,7 @@ async function main() {
   );
 
   if (candidates.length === 0 && options.safeOutputs) {
+    await mkdir(dirname(options.safeOutputs), {recursive: true});
     await appendFile(
       options.safeOutputs,
       `${JSON.stringify({

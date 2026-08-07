@@ -48,6 +48,13 @@ export function createGitHubClient({apiRoot, graphqlUrl, repository, token}) {
 
   return {
     collectPages,
+    async getIssue(number) {
+      const response = await request(`/issues/${number}`);
+      return response.json();
+    },
+    listIssueComments(number) {
+      return collectPages(`/issues/${number}/comments?per_page=100`);
+    },
     async listReviewIssuesWithComments(label) {
       const issues = [];
       let cursor = null;

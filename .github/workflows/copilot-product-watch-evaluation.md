@@ -49,16 +49,24 @@ tools:
 
 steps:
   - name: Set up Node.js
-    uses: actions/setup-node@v7
+    uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
     with:
       node-version: 22
   - name: Select managed product-watch fingerprints
     env:
       GH_TOKEN: ${{ github.token }}
+      GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
     run: >-
       node tooling/copilot-evaluation/select-managed-issues.mjs
       --output .github/aw/product-watch-evaluation-candidates.json
       --safe-outputs "$GH_AW_SAFE_OUTPUTS"
+  - name: Persist exact evaluation selection
+    uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+    with:
+      name: product-watch-evaluation-selection-${{ github.run_id }}
+      path: .github/aw/product-watch-evaluation-candidates.json
+      if-no-files-found: error
+      retention-days: 1
 
 safe-outputs:
   report-failure-as-issue: false
@@ -87,16 +95,22 @@ safe-outputs:
           type: string
       steps:
         - name: Check out repository
-          uses: actions/checkout@v7
+          uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
           with:
             persist-credentials: false
         - name: Set up Node.js
-          uses: actions/setup-node@v7
+          uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
           with:
             node-version: 22
+        - name: Restore exact evaluation selection
+          uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+          with:
+            name: product-watch-evaluation-selection-${{ github.run_id }}
+            path: ${{ runner.temp }}/product-watch-evaluation-selection
         - name: Validate and post managed comments
           env:
             GH_TOKEN: ${{ github.token }}
+            PRODUCT_WATCH_SELECTION_PATH: ${{ runner.temp }}/product-watch-evaluation-selection/product-watch-evaluation-candidates.json
           run: node tooling/copilot-evaluation/apply-comments.mjs
 
 strict: true
@@ -113,12 +127,13 @@ For each listed issue, independently research whether its suspected product chan
 1. Use only authoritative GitHub sources: current GitHub Docs, version-specific GHES Docs and release notes, GitHub Changelog, and GitHub-maintained product documentation repositories.
 2. Require explicit evidence for the exact deployment, GHES version, plan, setting, and behavior. General parity language or absence from an exception list does not establish support.
 3. Set **Evidence verdict** to exactly `supported`, `unsupported`, or `not documented`.
-4. If any material availability fact is unresolved, use `not documented`, set both **Effective default** and **Effective availability** to `no`, recommend human follow-up, and leave the issue open.
+4. For `unsupported` or `not documented`, set both **Effective default** and **Effective availability** to `no`. If any material availability fact is unresolved, use `not documented`, recommend human follow-up, and leave the issue open.
 5. Inspect repository files read-only to identify affected settings and files. Do not edit them.
+6. Any `supported` or `yes` conclusion must cite at least one direct GitHub Docs URL that you retrieved during this run. Live URL verification proves reachability only; you remain responsible for semantic relevance.
 
 ## Comment contract
 
-Request one `comment_managed_product_watch` safe output on the same issue number for each completed evaluation, up to the five issues in the input file. The safe-output job will re-query the live managed-issue allowlist and reject the complete batch before posting anything if any target, fingerprint, field, or default-no rule is invalid. Each comment must contain:
+Request one `comment_managed_product_watch` safe output on the same issue number for each completed evaluation, up to the five issues in the input file. The safe-output job uses the immutable selection artifact from before agent execution, then revalidates each selected issue's live state and unchanged markers. It rejects the complete batch before posting anything if any target, fingerprint, field, evidence URL, or default-no rule is invalid. Each comment must contain:
 
 - `<!-- product-watch:agent-evaluation:FINGERPRINT -->`, using that issue's exact fingerprint
 - **Evidence verdict:** `supported`, `unsupported`, or `not documented`
@@ -131,5 +146,9 @@ Request one `comment_managed_product_watch` safe output on the same issue number
 - **Recommended human disposition**
 - **Suggested implementation scope**
 - **Authoritative evidence**, with direct links and deployment/version caveats
+
+Use bare HTTPS URLs only. Do not use Markdown links, reference links, HTML
+links, non-HTTPS URI schemes, or email autolinks; the safe-output validator
+rejects rich link syntax so visible text cannot hide an unverified destination.
 
 Do not create, update, or close issues; add or remove labels; assign anyone; edit code; push; create pull requests; or merge. Comments are analysis, not implementation approval.
