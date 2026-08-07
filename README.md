@@ -2,6 +2,9 @@
 
 A public, static React + TypeScript decision assistant that turns fragmented GitHub Enterprise guidance into a small, ordered desired-state plan. It helps a platform team choose a target profile, tailor recommendations, review complexity, and export a portable plan.
 
+Published at
+[shariqh.github.io/github-enterprise-settings-configurator](https://shariqh.github.io/github-enterprise-settings-configurator/).
+
 ## Scope
 
 - Target profiles for GitHub.com, GHE.com data residency, or GHES 3.21 with deployment-aware account, authentication, and provisioning choices.
@@ -44,6 +47,8 @@ available on a deployment unless the audit records an explicit source.
 pnpm install
 pnpm dev
 pnpm test
+pnpm product-watch:test
+pnpm copilot-evaluation:test
 pnpm lint
 pnpm build
 ```
@@ -52,13 +57,37 @@ For GitHub Pages, Vite uses the `/github-enterprise-settings-configurator/` base
 
 ## GitHub product watch
 
-The scheduled [GitHub product watch](tooling/product-watch/README.md) monitors versioned GitHub Changelog, Docs/API, and GHES release-note sources. It deterministically opens evidence-rich human-review issues and never edits catalog or recommendation code. Manual workflow runs default to dry-run mode.
+The [GitHub product watch](tooling/product-watch/README.md) runs daily; manual
+runs default to dry-run. It monitors versioned GitHub Changelog, Docs/API, and
+GHES sources, including deterministic discovery from the GHES release index for
+new or unmodeled versions, release candidates and stable releases, patches, and
+lifecycle changes.
 
-Its optional [Copilot evaluation lane](docs/copilot-product-watch-evaluation.md)
-uses a compiled GitHub Agentic Workflow to comment on new or changed managed
-issue fingerprints. It is comment-only, default-no for undocumented
-availability, capped at five issues and 100 AI Credits per run, and remains
-separate from the deterministic watch.
+Required-source failures and redirects fail closed. Undocumented, unsupported,
+or unmodeled availability remains effectively **no** until a human reviews the
+evidence. The watch leaves an evidence-rich review issue and never edits
+application, catalog, or recommendation code.
+
+The [Copilot evaluation lane](docs/copilot-product-watch-evaluation.md) is
+comment-only. It evaluates at most five exact managed fingerprints per run and
+uses the documented pre-engine `noop` path when there are no candidates. Its
+safe output preserves the same default-no policy for unsupported or
+not-documented evidence.
+
+For this user-owned repository, the evaluator requires the repository Actions
+secret `COPILOT_GITHUB_TOKEN`. It must contain a fine-grained PAT with only
+**Account permissions → Copilot Requests: Read** and no repository permissions.
+Store it only as the Actions secret; never paste the token into chat, source,
+logs, or workflow YAML. This credential is a prerequisite, not evidence that a
+credentialed end-to-end evaluation has run.
+
+## Repository checks and protection
+
+The required CI check is `verify`. It runs configurator, product-watch, and
+Copilot evaluator tests, followed by lint and build/type-check. Live branch,
+Actions, security, merge, and Pages settings are maintained through the
+[repository protection runbook](docs/repository-protection.md), which is the
+source of truth for applying or recovering those controls.
 
 ## Non-goals
 
