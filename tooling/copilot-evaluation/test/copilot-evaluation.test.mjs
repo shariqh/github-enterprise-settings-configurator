@@ -617,11 +617,9 @@ test("workflow source permits only managed-issue comments as a write output", as
   assert.match(source, /max-ai-credits:\s*100/);
   assert.match(source, /comment-managed-product-watch:[\s\S]*issues: write/);
   assert.match(source, /node tooling\/copilot-evaluation\/apply-comments\.mjs/);
-  assert.match(source, /select_product_watch:[\s\S]*needs: activation/);
-  assert.match(source, /candidate_count: \$\{\{ steps\.select\.outputs\.candidate_count \}\}/);
   assert.match(
     source,
-    /agent:[\s\S]*needs: \[select_product_watch\][\s\S]*candidate_count != '0'/,
+    /GH_AW_SAFE_OUTPUTS: \$\{\{ steps\.set-runtime-paths\.outputs\.GH_AW_SAFE_OUTPUTS \}\}/,
   );
   assert.match(source, /safe-outputs:\s*\n\s*timeout-minutes: 10/);
   assert.match(source, /timeout 9m node tooling\/copilot-evaluation\/apply-comments\.mjs/);
@@ -667,8 +665,8 @@ test("selector and apply scripts preserve the exact pre-agent selection", async 
       "utf8",
     ),
   ]);
-  assert.match(selector, /candidate_count=\$\{candidates\.length\}/);
-  assert.equal(selector.includes("GH_AW_SAFE_OUTPUTS"), false);
+  assert.match(selector, /mkdir\(dirname\(options\.safeOutputs\), \{recursive: true\}\)/);
+  assert.match(selector, /type: "noop"/);
   assert.match(apply, /PRODUCT_WATCH_SELECTION_PATH/);
   assert.match(apply, /validateLiveSelectedIssue/);
   assert.equal(apply.includes("selectIssuesForEvaluation"), false);
@@ -694,13 +692,15 @@ test("compiled lock preserves least privilege and pinned dependencies", async ()
   assert.equal(lock.includes("report_incomplete"), false);
   assert.equal(lock.includes("GH_AW_MISSING_TOOL_CREATE_ISSUE"), false);
   assert.match(lock, /comment_managed_product_watch/);
+  const runtimePathsIndex = lock.indexOf("- name: Set runtime paths");
+  const selectorIndex = lock.indexOf("- name: Select managed product-watch fingerprints");
+  const executeIndex = lock.indexOf("- name: Execute GitHub Copilot CLI");
+  assert.ok(runtimePathsIndex >= 0);
+  assert.ok(runtimePathsIndex < selectorIndex);
+  assert.ok(selectorIndex < executeIndex);
   assert.match(
-    lock,
-    /select_product_watch:[\s\S]*candidate_count: \$\{\{ steps\.select\.outputs\.candidate_count \}\}[\s\S]*select-managed-issues\.mjs/,
-  );
-  assert.match(
-    lock,
-    /agent:[\s\S]*needs:[\s\S]*select_product_watch[\s\S]*candidate_count != '0'/,
+    lock.slice(selectorIndex, executeIndex),
+    /GH_AW_SAFE_OUTPUTS: \$\{\{ steps\.set-runtime-paths\.outputs\.GH_AW_SAFE_OUTPUTS \}\}/,
   );
   assert.match(
     lock,

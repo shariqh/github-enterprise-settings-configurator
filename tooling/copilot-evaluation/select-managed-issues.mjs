@@ -14,16 +14,22 @@ function parseArguments(argv) {
   const options = {
     output: ".github/aw/product-watch-evaluation-candidates.json",
     githubOutput: process.env.GITHUB_OUTPUT ?? "",
+    safeOutputs: process.env.GH_AW_SAFE_OUTPUTS ?? "",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
     const key = argv[index];
     const value = argv[index + 1];
-    if (key === "--output" || key === "--github-output") {
+    if (key === "--output" || key === "--github-output" || key === "--safe-outputs") {
       if (!value) {
         throw new Error(`${key} requires a value.`);
       }
-      options[key === "--output" ? "output" : "githubOutput"] = value;
+      const optionName = key === "--output"
+        ? "output"
+        : key === "--github-output"
+          ? "githubOutput"
+          : "safeOutputs";
+      options[optionName] = value;
       index += 1;
     } else {
       throw new Error(`Unknown argument: ${key}`);
@@ -74,6 +80,16 @@ async function main() {
     await appendFile(
       options.githubOutput,
       `candidate_count=${candidates.length}\n`,
+    );
+  }
+  if (candidates.length === 0 && options.safeOutputs) {
+    await mkdir(dirname(options.safeOutputs), {recursive: true});
+    await appendFile(
+      options.safeOutputs,
+      `${JSON.stringify({
+        type: "noop",
+        message: "No new or changed managed product-watch fingerprints require evaluation.",
+      })}\n`,
     );
   }
 

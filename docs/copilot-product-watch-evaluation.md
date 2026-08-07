@@ -26,9 +26,14 @@ Before Copilot starts, a deterministic selector:
 5. Selects at most five new or changed fingerprints.
 6. Persists the exact selected issue number, candidate key, and fingerprint as
    a run artifact before agent execution.
-7. Exposes `candidate_count` from the deterministic job. The generated agent
-   job has a hard `if: candidate_count != '0'` gate, so zero candidates skip the
-   entire agent job, create no comment, and consume no inference AI Credits.
+7. Writes a `noop` to gh-aw's generated safe-output path when the selection is
+   empty. In v0.85.4 the Copilot harness checks that file at startup before
+   launching the AI engine, so the run creates no comment and consumes no
+   inference AI Credits even though the generated execution step is present.
+   This is the documented [custom-step
+   contract](https://github.com/github/gh-aw/blob/v0.85.4/docs/src/content/docs/reference/steps-jobs.md)
+   and [cost-management
+   behavior](https://github.com/github/gh-aw/blob/v0.85.4/docs/src/content/docs/reference/cost-management.md).
 
 The agent has read-only contents, issues, and pull-request permissions. The
 only configured write safe output is a custom job that adds up to five
