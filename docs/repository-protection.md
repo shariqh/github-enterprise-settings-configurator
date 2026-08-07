@@ -105,8 +105,9 @@ Only GitHub-owned actions and `pnpm/action-setup` are used.
 
 ```bash
 # Enable Actions with a selected allow-list.
+# enabled is a boolean (-F); allowed_actions is a string enum (-f).
 gh api --method PUT repos/OWNER/REPO/actions/permissions \
-  -f enabled=true -f allowed_actions=selected
+  -F enabled=true -f allowed_actions=selected
 
 # Allow GitHub-owned actions plus pnpm/action-setup (any pinned ref).
 gh api --method PUT repos/OWNER/REPO/actions/permissions/selected-actions \
@@ -132,13 +133,28 @@ Current inventory to keep this list in sync:
 > SHA-pinned **before** turning on hard SHA enforcement, or those runs will be
 > blocked.
 
-### 2b. Require full-SHA pinning
+### 2b. Require full-SHA pinning (repository-scoped)
 
-Full-SHA pinning enforcement is an organization/enterprise Actions policy
-("Require actions to be pinned to a full-length commit SHA"). For a
-user-owned repo it is inherited from the account's Actions policy. Enable it at
-`https://github.com/settings/actions` (or the org equivalent) once every
-workflow — including `product-watch.yml` — is SHA-pinned.
+GitHub exposes a **repository-scoped** toggle — "Require actions to be pinned to
+a full-length commit SHA" — in this repo's **Settings → Actions → General**,
+backed by the `sha_pinning_required` field on the same repo Actions permissions
+endpoint used in §2a. Enforce it for **this repository only**; do not change the
+account-wide policy at `github.com/settings/actions` (that has a much larger
+blast radius). `sha_pinning_required` is a boolean, so pass it with `-F`:
+
+```bash
+gh api --method PUT repos/OWNER/REPO/actions/permissions \
+  -F enabled=true \
+  -f allowed_actions=selected \
+  -F sha_pinning_required=true
+```
+
+**Precondition:** every checked-in workflow must already pin each action to an
+immutable full-length commit SHA. All workflows in this PR do; confirm
+`product-watch.yml` (daily/GHES lane) is fully SHA-pinned **before** enabling, or
+its runs will be blocked. Once that precondition holds you can fold this into the
+single §2a PUT (it already sets `enabled` and `allowed_actions`), rather than
+issuing a second call.
 
 ---
 
@@ -212,9 +228,10 @@ restricts deployments to a custom branch policy named `main`
 
 ```bash
 # Ensure the environment allows custom branch policies.
+# protected_branches / custom_branch_policies are booleans (-F).
 gh api --method PUT repos/OWNER/REPO/environments/github-pages \
-  -f 'deployment_branch_policy[protected_branches]=false' \
-  -f 'deployment_branch_policy[custom_branch_policies]=true'
+  -F 'deployment_branch_policy[protected_branches]=false' \
+  -F 'deployment_branch_policy[custom_branch_policies]=true'
 
 # Allow only main to deploy to github-pages (idempotent: skip if it exists).
 gh api --method POST repos/OWNER/REPO/environments/github-pages/deployment-branch-policies \
@@ -249,7 +266,7 @@ workflow's `on: push: branches: [main]` trigger.
 
   ```bash
   gh api --method PUT repos/OWNER/REPO/actions/permissions \
-    -f enabled=true -f allowed_actions=all
+    -F enabled=true -f allowed_actions=all
   ```
 
 - **A workflow needs a broader token temporarily:** prefer adding a scoped
