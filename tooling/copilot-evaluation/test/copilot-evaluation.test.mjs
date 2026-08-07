@@ -248,7 +248,8 @@ test("workflow source permits only managed-issue comments as a write output", as
   assert.match(source, /workflow_run:[\s\S]*GitHub product watch/);
   assert.match(source, /github\.event\.workflow_run\.conclusion == 'success'/);
   assert.match(source, /workflow_dispatch:/);
-  assert.match(source, /copilot-requests: write/);
+  assert.match(source, /engine:[\s\S]*id: copilot/);
+  assert.equal(source.includes("copilot-requests: write"), false);
   assert.match(source, /max-ai-credits:\s*100/);
   assert.match(source, /comment-managed-product-watch:[\s\S]*issues: write/);
   assert.match(source, /node tooling\/copilot-evaluation\/apply-comments\.mjs/);
@@ -282,7 +283,10 @@ test("compiled lock preserves least privilege and pinned dependencies", async ()
 
   assert.match(lock, /^# gh-aw-metadata: .*"compiler_version":"v0\.85\.4"/);
   assert.match(lock, /^# gh-aw-manifest: .*"actions":\[/m);
-  assert.match(lock, /copilot-requests: write/);
+  assert.doesNotMatch(lock, /^\s+copilot-requests:\s+write\s*$/m);
+  assert.match(lock, /name: Validate COPILOT_GITHUB_TOKEN secret/);
+  assert.match(lock, /validate_multi_secret\.sh" COPILOT_GITHUB_TOKEN/);
+  assert.match(lock, /COPILOT_GITHUB_TOKEN: \$\{\{ secrets\.COPILOT_GITHUB_TOKEN \}\}/);
   assert.match(lock, /issues: write/);
   assert.equal(lock.includes("contents: write"), false);
   assert.equal(lock.includes("pull-requests: write"), false);

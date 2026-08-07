@@ -37,29 +37,48 @@ threat-detection cap.
 
 ## Authentication and billing prerequisite
 
-The checked-in workflow uses the documented `copilot-requests: write`
-permission. Current `gh-aw` documentation defines this as organization-billed
-authentication: the repository owner must be an organization with Copilot CLI
-and centralized Copilot request billing enabled. No repository PAT is used.
+This user-owned repository uses the documented personal-repository
+authentication mode. The workflow intentionally omits the organization-only
+`copilot-requests: write` permission, so `gh-aw` requires the
+`COPILOT_GITHUB_TOKEN` Actions secret and fails explicitly during activation
+when it is absent or invalid. There is no authentication fallback.
 
-This repository is currently owned by a personal account. GitHub documents
-`COPILOT_GITHUB_TOKEN` as the personal-repository alternative, but also states
-that the secret is ignored whenever `copilot-requests: write` is present.
-Therefore the checked-in workflow will fail explicitly at Copilot inference
-until the repository is organization-owned with centralized billing enabled.
-There is no token fallback in this repository.
+Create a **fine-grained personal access token**, not a classic PAT, OAuth token,
+GitHub App token, or `GITHUB_TOKEN`. The token must:
 
-If ownership remains personal, a maintainer must make a separately reviewed
-change that removes `copilot-requests: write`, recompiles the lock file, and
-sets `COPILOT_GITHUB_TOKEN` to a fine-grained PAT owned by a licensed Copilot
-user with only **Account permissions → Copilot Requests: Read**. Never commit
-the token. Set it with:
+- be owned by the personal account that has an active GitHub Copilot license;
+- use that user as the resource owner; and
+- grant only **Account permissions → Copilot Requests: Read**.
+
+Repository permissions are not required for Copilot inference. Safe-output
+comments continue to use the short-lived workflow `GITHUB_TOKEN`, limited to
+the generated comment job. Never commit, print, log, or place the PAT in
+workflow YAML. Store it only as the repository Actions secret:
 
 ```bash
 gh aw secrets set COPILOT_GITHUB_TOKEN --value "<fine-grained-pat>"
 ```
 
-OAuth tokens (`gho_...`) are rejected by `gh-aw` for this secret.
+This secret is a **post-merge human prerequisite**. Do not enable or manually
+dispatch the workflow until it is configured. OAuth tokens (`gho_...`) are
+rejected by `gh-aw`.
+
+### Rotation and revocation
+
+1. Create a replacement fine-grained PAT with the same minimum account
+   permission and an expiration date.
+2. Replace the repository secret with `gh aw secrets set
+   COPILOT_GITHUB_TOKEN --value "<replacement-fine-grained-pat>"`.
+3. Run one manual evaluation and confirm authentication before revoking the old
+   token.
+4. Revoke the old PAT under GitHub **Settings → Developer settings → Personal
+   access tokens → Fine-grained tokens**.
+5. To disable the lane immediately, delete the repository secret and revoke the
+   active PAT. The next run fails closed during activation.
+
+If the repository later moves to an organization with centralized Copilot CLI
+billing, a separate reviewed migration may add `copilot-requests: write`,
+remove the PAT prerequisite, recompile the lock, and revoke the personal token.
 
 ## Compilation and checks
 
