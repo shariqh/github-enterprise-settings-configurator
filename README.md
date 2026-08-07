@@ -33,6 +33,11 @@ The UI labels sources according to their appropriate use:
 
 Worked examples include [safe-settings](https://github.com/github-community-projects/safe-settings), [ruleset-recipes](https://github.com/github/ruleset-recipes), and the third-party [Copilot adoption guide](https://samqbush.github.io/copilot-adoption/).
 
+The current product-research baseline is recorded in the
+[2026 catalog audit](docs/catalog-audit-2026.md). Global freshness metadata is
+versioned in `src/catalogMetadata.ts`; it is not evidence that a feature is
+available on a deployment unless the audit records an explicit source.
+
 ## Local development
 
 ```bash
@@ -44,6 +49,10 @@ pnpm build
 ```
 
 For GitHub Pages, Vite uses the `/github-enterprise-settings-configurator/` base path in GitHub Actions and `/` for local development.
+
+## GitHub product watch
+
+The scheduled [GitHub product watch](tooling/product-watch/README.md) monitors versioned GitHub Changelog, Docs/API, and GHES release-note sources. It deterministically opens evidence-rich human-review issues and never edits catalog or recommendation code. Manual workflow runs default to dry-run mode.
 
 ## Non-goals
 

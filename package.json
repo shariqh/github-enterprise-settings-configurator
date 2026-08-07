@@ -9,7 +9,9 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run src",
+    "product-watch": "node tooling/product-watch/cli.mjs",
+    "product-watch:test": "node --test tooling/product-watch/test/*.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.7.1",

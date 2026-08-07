@@ -1,0 +1,72 @@
+name: GitHub product watch
+
+on:
+  schedule:
+    - cron: "17 13 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview candidates without creating or updating issues
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: github-product-watch
+  cancel-in-progress: false
+
+jobs:
+  review-product-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test deterministic product-watch rules
+        run: node --test tooling/product-watch/test/*.test.mjs
+
+      - name: Scan product sources
+        id: scan
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+        run: |
+          node tooling/product-watch/cli.mjs \
+            --config tooling/product-watch/config/v1.json \
+            --output product-watch-report.json \
+            --summary product-watch-summary.md \
+            --dry-run "$DRY_RUN"
+
+      - name: Publish run summary
+        if: always()
+        run: |
+          if [[ -f product-watch-summary.md ]]; then
+            cat product-watch-summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Product watch exited before it could write a summary." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload machine-readable report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-watch-report-${{ github.run_id }}
+          path: |
+            product-watch-report.json
+            product-watch-summary.md
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Fail when scan was incomplete
+        if: steps.scan.outcome == 'failure'
+        run: |
+          echo "One or more sources or GitHub issue mutations failed. State was not advanced."
+          exit 1
