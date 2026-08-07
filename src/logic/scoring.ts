@@ -59,9 +59,8 @@ export function getChoiceImpact(setting: Setting, selected: string): ChoiceImpac
 
 export const buildDomainProfiles = (settings: RecommendedSetting[]): DomainProfile[] => {
   const groups = new Map<Domain, RecommendedSetting[]>()
-  settings
-    .filter((item) => item.disposition !== "Not applicable")
-    .forEach((item) => groups.set(item.setting.domain, [...(groups.get(item.setting.domain) ?? []), item]))
+  settings.forEach((item) =>
+    groups.set(item.setting.domain, [...(groups.get(item.setting.domain) ?? []), item]))
 
   return [...groups.entries()].map(([domain, items]) => {
     const scoredItems = items.filter((item) => (item.setting.postureWeight ?? influenceWeight[item.setting.influence]) > 0)
