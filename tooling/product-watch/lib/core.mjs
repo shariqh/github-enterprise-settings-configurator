@@ -11,6 +11,22 @@ const DISPOSITIONS = [
   "Needs product SME",
 ];
 
+export const GHES_RELEASE_KINDS = {
+  FEATURE_CANDIDATE: "ghes-feature-release-candidate",
+  FEATURE_STABLE: "ghes-feature-release-stable",
+  PATCH: "ghes-patch-release",
+  LIFECYCLE: "ghes-lifecycle-change",
+  VERSION_DISCOVERED: "ghes-version-discovered",
+};
+
+export const GHES_CANDIDATE_LABELS = {
+  [GHES_RELEASE_KINDS.FEATURE_CANDIDATE]: "GHES feature release candidate",
+  [GHES_RELEASE_KINDS.FEATURE_STABLE]: "GHES feature release (stable)",
+  [GHES_RELEASE_KINDS.PATCH]: "GHES patch release",
+  [GHES_RELEASE_KINDS.LIFECYCLE]: "GHES lifecycle / closing-down change",
+  [GHES_RELEASE_KINDS.VERSION_DISCOVERED]: "GHES newly discovered version",
+};
+
 export function normalizeWhitespace(value) {
   return String(value ?? "")
     .normalize("NFKC")
@@ -197,33 +213,291 @@ function extractReleaseDate(value) {
   return match ? toIsoDate(`${match[1]}T00:00:00Z`) : null;
 }
 
+/**
+ * Compares two "major.minor" GHES version strings. Returns a positive number
+ * when `a` is newer than `b`, negative when older, and 0 when equal.
+ */
+export function compareGhesVersions(a, b) {
+  const [aMajor, aMinor] = String(a).split(".").map(Number);
+  const [bMajor, bMinor] = String(b).split(".").map(Number);
+  if (!Number.isFinite(aMajor) || !Number.isFinite(bMajor)) {
+    throw new Error(`Invalid GHES version comparison: ${a} vs ${b}`);
+  }
+  return aMajor !== bMajor ? aMajor - bMajor : aMinor - bMinor;
+}
+
+function maxGhesVersion(versions) {
+  return versions.reduce((max, value) => (compareGhesVersions(value, max) > 0 ? value : max));
+}
+
+/**
+ * Validates that a URL the tool is about to follow is an authoritative
+ * GitHub Docs URL, before any dynamically constructed request. This is the
+ * single SSRF choke point for GHES release discovery: URLs are only ever
+ * built from a checked-in template plus a version string that has already
+ * been validated against `^\d+\.\d+$`, and are still re-checked here against
+ * an explicit host and path allow-list.
+ */
+export function assertAllowedDocsUrl(rawUrl, ghesRelease) {
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error(`Refusing malformed product-watch URL: ${rawUrl}`);
+  }
+  if (url.protocol !== "https:") {
+    throw new Error(`Refusing non-https product-watch URL: ${rawUrl}`);
+  }
+  const allowedHosts = ghesRelease?.allowedHosts ?? [];
+  if (!allowedHosts.includes(url.hostname)) {
+    throw new Error(`Refusing product-watch URL with disallowed host: ${url.hostname}`);
+  }
+  const prefix = ghesRelease?.allowedPathPrefix;
+  if (prefix && !url.pathname.startsWith(prefix)) {
+    throw new Error(`Refusing product-watch URL with disallowed path: ${url.pathname}`);
+  }
+  return url;
+}
+
+function isTrackedGhesVersion(version, ghesRelease) {
+  if (!ghesRelease || !version) {
+    return true;
+  }
+  if (ghesRelease.modeledVersions.includes(version)) {
+    return true;
+  }
+  return compareGhesVersions(version, maxGhesVersion(ghesRelease.modeledVersions)) > 0;
+}
+
+// Header substrings that must all be present (case-insensitively) for a
+// table to be treated as the GHES "all releases" index, rather than blindly
+// trusting the first <table> on the page. This lets parsing skip an
+// unrelated table (for example a "supported browsers" or "migration path"
+// table) that happens to precede the real releases table, and it lets a
+// page whose releases table has lost its expected structure fail to match
+// any table at all -- which is then caught as a structural invariant
+// violation below instead of silently returning zero entries.
+const GHES_RELEASES_TABLE_REQUIRED_HEADERS = ["version", "supported", "release notes"];
+
+function isGhesReleasesTableHeader(headers) {
+  return GHES_RELEASES_TABLE_REQUIRED_HEADERS.every(
+    (name) => tableColumnIndex(headers, name) >= 0,
+  );
+}
+
+function parseTableRows(tableInnerHtml) {
+  const rowMatches = [...tableInnerHtml.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)];
+  const rows = rowMatches.map((rowMatch) => {
+    const cellMatches = [...rowMatch[1].matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)];
+    return cellMatches.map((cellMatch) => {
+      const cellHtml = cellMatch[1];
+      const hrefMatch = cellHtml.match(/href="([^"]+)"/i);
+      return {text: stripMarkup(cellHtml), html: cellHtml, href: hrefMatch?.[1] ?? null};
+    });
+  });
+  if (rows.length === 0) {
+    return null;
+  }
+  return {headers: rows[0].map((cell) => cell.text.toLowerCase()), rows: rows.slice(1)};
+}
+
+/**
+ * Finds the intended GHES releases table among every <table> on the page,
+ * rather than assuming it is the first one. A table only matches when its
+ * header row contains all of `GHES_RELEASES_TABLE_REQUIRED_HEADERS`; any
+ * earlier unrelated table (e.g. one without a "Supported" or "Release
+ * notes" column) is skipped. If no table matches, an empty result is
+ * returned so the caller's structural invariant check can fail closed.
+ */
+function parseHtmlTable(html) {
+  const tableMatches = [...String(html).matchAll(/<table\b[^>]*>([\s\S]*?)<\/table>/gi)];
+  for (const tableMatch of tableMatches) {
+    const parsed = parseTableRows(tableMatch[1]);
+    if (parsed && isGhesReleasesTableHeader(parsed.headers)) {
+      return parsed;
+    }
+  }
+  return {headers: [], rows: []};
+}
+
+function tableColumnIndex(headers, name) {
+  return headers.findIndex((header) => header.includes(name));
+}
+
+/**
+ * Parses the GHES "all releases" index table into per-version lifecycle
+ * metadata (`versions`) plus one lifecycle candidate entry per version that
+ * is currently tracked (the modeled baseline or a version newer than it).
+ * Older, already-superseded versions are parsed for completeness but do not
+ * generate review candidates, to keep daily signal focused.
+ */
+export function parseGhesReleaseIndex(raw, source) {
+  const {headers, rows} = parseHtmlTable(raw);
+  const versionIdx = tableColumnIndex(headers, "version");
+  const candidateIdx = tableColumnIndex(headers, "candidate");
+  const releaseIdx = tableColumnIndex(headers, "release");
+  const closingIdx = tableColumnIndex(headers, "closing down");
+  const supportedIdx = tableColumnIndex(headers, "supported");
+  const releaseNotesIdx = tableColumnIndex(headers, "release notes");
+
+  const versions = [];
+  const entries = [];
+  for (const row of rows) {
+    const versionText = row[versionIdx]?.text.trim();
+    if (versionIdx < 0 || !versionText || !/^\d+\.\d+$/.test(versionText)) {
+      continue;
+    }
+    const candidateDate = candidateIdx >= 0 ? (row[candidateIdx]?.text.trim() || null) : null;
+    const releaseDate = releaseIdx >= 0 ? (row[releaseIdx]?.text.trim() || null) : null;
+    const closingDownDate = closingIdx >= 0 ? (row[closingIdx]?.text.trim() || null) : null;
+    const supportedCellHtml = supportedIdx >= 0 ? (row[supportedIdx]?.html ?? "") : "";
+    const supported = supportedIdx < 0
+      ? null
+      : !/not supported/i.test(supportedCellHtml) && /supported/i.test(supportedCellHtml);
+    const releaseNotesHref = releaseNotesIdx >= 0 ? (row[releaseNotesIdx]?.href ?? null) : null;
+    const releaseNotesUrl = releaseNotesHref
+      ? new URL(releaseNotesHref, source.url).toString()
+      : null;
+
+    versions.push({
+      version: versionText,
+      candidateDate,
+      releaseDate,
+      closingDownDate,
+      supported,
+      releaseNotesUrl,
+    });
+
+    if (!isTrackedGhesVersion(versionText, source.ghesRelease)) {
+      continue;
+    }
+    entries.push({
+      id: `${source.url}#version-${versionText}`,
+      sourceId: source.id,
+      sourceLabel: source.label,
+      sourceUrl: source.url,
+      title: `GitHub Enterprise Server ${versionText} lifecycle status`,
+      url: releaseNotesUrl ?? source.url,
+      publishedAt: null,
+      summary: `Candidate date: ${candidateDate ?? "unknown"}. Release date: ${
+        releaseDate ?? "unknown"
+      }. Closing down date: ${closingDownDate ?? "not listed"}. Supported: ${
+        supported === null ? "unknown" : supported ? "yes" : "no"
+      }.`,
+      deployments: source.deployments ?? [],
+      sourceVersion: versionText,
+      ghesReleaseKind: GHES_RELEASE_KINDS.LIFECYCLE,
+    });
+  }
+
+  // Structural invariant: the configured modeled baseline must always be
+  // present in a successfully parsed releases table. If the page structure
+  // changes (an unmatched table, a renamed/removed column, or any other
+  // drift `parseHtmlTable` can't route around) this row set will silently
+  // come back incomplete or empty. Rather than let a caller treat that as a
+  // successful scan with zero discovery, fail closed here: this throws, is
+  // caught as a per-source ingestion error, and keeps issue-backed state
+  // from advancing so the next scheduled run retries.
+  const modeledVersions = source.ghesRelease?.modeledVersions ?? [];
+  const foundVersions = new Set(versions.map((entry) => entry.version));
+  const missingModeledVersions = modeledVersions.filter(
+    (version) => !foundVersions.has(version),
+  );
+  if (missingModeledVersions.length > 0) {
+    throw new Error(
+      `GHES release index at ${source.url} is missing expected modeled version(s): ${
+        missingModeledVersions.join(", ")
+      }. The releases table may be missing, restructured, or preceded by an unrelated table. Refusing to advance product-watch state.`,
+    );
+  }
+
+  return {entries, versions};
+}
+
+/**
+ * Builds the single "newly discovered version" candidate entry for a GHES
+ * version found in the release index but not yet modeled in the catalog.
+ * This entry always exists for a discovered version, even when its release
+ * notes could not be retrieved, so an unresolved case is always represented
+ * by a review issue and defaults to effective unavailable/unmodeled.
+ */
+export function buildVersionDiscoveredEntry(row, ghesRelease, sourceId, fetchError = null) {
+  const fallbackUrl = row.releaseNotesUrl
+    ?? ghesRelease.releaseNotesUrlTemplate.replace("{version}", row.version);
+  const evidenceNote = fetchError
+    ? `Release notes evidence could not be retrieved (${fetchError.message}). This version defaults to effective unavailable/unmodeled until a human reviews authoritative evidence.`
+    : "Default posture: effective unavailable/unmodeled until a human reviews authoritative evidence and updates the catalog. This automation does not enable any application capability automatically.";
+  return {
+    id: `ghes-version-discovered:${row.version}`,
+    sourceId,
+    sourceLabel: "GitHub Enterprise Server all releases (discovered)",
+    sourceUrl: fallbackUrl,
+    title: `GitHub Enterprise Server ${row.version} discovered`,
+    url: fallbackUrl,
+    publishedAt: null,
+    summary: `GitHub Enterprise Server ${row.version} was discovered in the all-releases index and is not yet modeled in this catalog. Candidate date: ${
+      row.candidateDate ?? "unknown"
+    }. Release date: ${row.releaseDate ?? "unknown"}. Closing down date: ${
+      row.closingDownDate ?? "not listed"
+    }. ${evidenceNote}`,
+    deployments: ["ghes"],
+    sourceVersion: row.version,
+    ghesReleaseKind: GHES_RELEASE_KINDS.VERSION_DISCOVERED,
+    discoveredVersion: true,
+  };
+}
+
+function inferGhesReleaseKind(entry) {
+  if (!entry.ghesVersion) {
+    return null;
+  }
+  const versionMatch = entry.title.match(/\d+\.\d+\.(\d+)/);
+  if (!versionMatch) {
+    return null;
+  }
+  const isCandidate = /release candidate|\brc\s*\d*\b/i.test(`${entry.title} ${entry.summary}`);
+  if (isCandidate) {
+    return GHES_RELEASE_KINDS.FEATURE_CANDIDATE;
+  }
+  return Number(versionMatch[1]) === 0 ? GHES_RELEASE_KINDS.FEATURE_STABLE : GHES_RELEASE_KINDS.PATCH;
+}
+
 export function ingestSourceContent(source, raw) {
   let entries;
+  let versions = null;
   if (source.kind === "rss") {
     entries = parseRss(raw, source);
   } else if (source.kind === "html-page") {
     entries = parseHtmlPage(raw, source);
   } else if (source.kind === "html-sections") {
     entries = parseHtmlSections(raw, source);
+  } else if (source.kind === "ghes-release-index") {
+    const parsed = parseGhesReleaseIndex(raw, source);
+    entries = parsed.entries;
+    versions = parsed.versions;
   } else {
     throw new Error(`Unsupported source kind: ${source.kind}`);
   }
 
   const baseline = toIsoDate(source.baselineReviewedThrough);
-  return entries
+  const filtered = entries
     .filter((entry) => entry.title && entry.summary)
     .filter((entry) => !baseline || !entry.publishedAt || entry.publishedAt > baseline)
     .slice(0, source.maxEntries ?? Number.POSITIVE_INFINITY);
+  filtered.versions = versions;
+  return filtered;
 }
 
 export async function ingestConfiguredSources(config, fetchSource) {
   const settled = await Promise.allSettled(
     config.sources.map(async (source) => {
       const raw = await fetchSource(source);
-      const entries = ingestSourceContent(
-        {...source, maxEntries: config.request.maxEntriesPerSource},
-        raw,
-      );
+      const mergedSource = {
+        ...source,
+        maxEntries: config.request.maxEntriesPerSource,
+        ghesRelease: source.kind === "ghes-release-index" ? config.ghesRelease : undefined,
+      };
+      const entries = ingestSourceContent(mergedSource, raw);
       return { source, entries };
     }),
   );
@@ -240,6 +514,7 @@ export async function ingestConfiguredSources(config, fetchSource) {
         url: source.url,
         status: "ok",
         entryCount: result.value.entries.length,
+        versions: result.value.entries.versions ?? null,
       });
     } else {
       const message = result.reason instanceof Error
@@ -374,7 +649,13 @@ export function classifyEntry(rawEntry, config) {
   }
 
   const ghesVersion = extractGhesVersion(text, entry);
-  const relevant = domainMatches.length > 0 || productMatches.length > 0;
+  const ghesCandidateType = entry.ghesReleaseKind ?? inferGhesReleaseKind({...entry, ghesVersion});
+  const unmodeledVersion = Boolean(entry.discoveredVersion);
+  if (ghesCandidateType) {
+    matchedRules.push(`ghes-candidate-type:${ghesCandidateType}`);
+  }
+  const allChangeTypes = ghesCandidateType ? [ghesCandidateType, ...changeTypes] : changeTypes;
+  const relevant = domainMatches.length > 0 || productMatches.length > 0 || Boolean(ghesCandidateType);
   const confidence = settings.length > 0 && changeTypeMatches.length > 0
     ? "high"
     : relevant
@@ -387,10 +668,12 @@ export function classifyEntry(rawEntry, config) {
     products: productMatches.map(({record}) => record.label),
     domains: domainMatches.map(({record}) => record.label),
     settingIds: [...new Set(settings)].sort(),
-    changeTypes: [...new Set(changeTypes)],
+    changeTypes: [...new Set(allChangeTypes)],
     releaseStage,
     versionSpecific: Boolean(ghesVersion),
     ghesVersion,
+    ghesCandidateType,
+    unmodeledVersion,
     deployments: [...new Set(deployments)],
     plans: [...new Set(plans)],
     impactSurfaces: [...new Set(impactSurfaces)],
@@ -411,8 +694,9 @@ export function buildCandidates(entries, config) {
 }
 
 export function validateConfig(config) {
-  if (config?.schemaVersion !== 1) {
-    throw new Error(`Unsupported product-watch schemaVersion: ${config?.schemaVersion}`);
+  const schemaVersion = config?.schemaVersion;
+  if (schemaVersion !== 1 && schemaVersion !== 2) {
+    throw new Error(`Unsupported product-watch schemaVersion: ${schemaVersion}`);
   }
   if (
     !Number.isInteger(config.state.maxFingerprints)
@@ -433,6 +717,48 @@ export function validateConfig(config) {
     }
     sourceIds.add(source.id);
   }
+
+  if (schemaVersion === 2) {
+    const ghesRelease = config.ghesRelease;
+    if (!ghesRelease) {
+      throw new Error("schemaVersion 2 requires a ghesRelease configuration block");
+    }
+    if (!Array.isArray(ghesRelease.modeledVersions) || ghesRelease.modeledVersions.length === 0) {
+      throw new Error("ghesRelease.modeledVersions must be a non-empty array");
+    }
+    for (const version of ghesRelease.modeledVersions) {
+      if (!/^\d+\.\d+$/.test(version)) {
+        throw new Error(`ghesRelease.modeledVersions entries must be "major.minor": ${version}`);
+      }
+    }
+    if (!ghesRelease.indexSourceId || !sourceIds.has(ghesRelease.indexSourceId)) {
+      throw new Error("ghesRelease.indexSourceId must reference a configured source");
+    }
+    if (!ghesRelease.releaseNotesUrlTemplate?.includes("{version}")) {
+      throw new Error("ghesRelease.releaseNotesUrlTemplate must contain a {version} placeholder");
+    }
+    if (!Array.isArray(ghesRelease.allowedHosts) || ghesRelease.allowedHosts.length === 0) {
+      throw new Error("ghesRelease.allowedHosts must be a non-empty array");
+    }
+    if (!ghesRelease.allowedPathPrefix) {
+      throw new Error("ghesRelease.allowedPathPrefix is required");
+    }
+    // Defense in depth: every statically configured GHES-versioned source
+    // (the release index and any per-version release-notes source) must
+    // already live within the same authoritative allow-list that gates
+    // dynamically discovered version URLs.
+    for (const source of config.sources) {
+      if (source.kind === "ghes-release-index" || (source.kind === "html-sections" && source.version)) {
+        assertAllowedDocsUrl(source.url, ghesRelease);
+      }
+    }
+    const templateUrl = ghesRelease.releaseNotesUrlTemplate.replace(
+      "{version}",
+      ghesRelease.modeledVersions[0],
+    );
+    assertAllowedDocsUrl(templateUrl, ghesRelease);
+  }
+
   return config;
 }
 
@@ -505,6 +831,11 @@ export function renderIssueBody(candidate, existingBody = "") {
     : "";
   const publication = candidate.publishedAt ?? "No publication date exposed by source";
   const retrieved = candidate.retrievedAt ?? "Recorded in the product-watch report";
+  const unmodeledCallout = candidate.unmodeledVersion
+    ? `\n> **Not yet modeled.** GitHub Enterprise Server ${
+      candidate.ghesVersion ?? "this version"
+    } is not present in the current catalog model. Default posture is effective **unavailable/unmodeled** until a human reviews authoritative evidence and updates the catalog. This automation never enables an application capability automatically.\n`
+    : "";
 
   return `<!-- product-watch:key:${candidate.candidateKey} -->
 <!-- product-watch:fingerprint:${candidate.fingerprint} -->
@@ -512,7 +843,7 @@ export function renderIssueBody(candidate, existingBody = "") {
 # Product-change review
 
 > This is a deterministic review candidate. The automation does not edit catalog, recommendation, persistence, scoring, or application code.
-
+${unmodeledCallout}
 ## Source evidence
 
 | Field | Value |
@@ -534,8 +865,10 @@ ${candidate.summaryTruncated ? "\n\n_Evidence excerpt truncated; use the source 
 | Catalog domains | ${list(candidate.domains)} |
 | Catalog setting IDs | ${list(candidate.settingIds.map((id) => `\`${id}\``))} |
 | Change types | ${list(candidate.changeTypes)} |
+| GHES candidate type | ${candidate.ghesCandidateType ? GHES_CANDIDATE_LABELS[candidate.ghesCandidateType] ?? candidate.ghesCandidateType : "N/A"} |
 | Release stage | ${candidate.releaseStage} |
 | Version-specific | ${candidate.versionSpecific ? `Yes${candidate.ghesVersion ? ` — GHES ${candidate.ghesVersion}` : ""}` : "No"} |
+| Modeled version | ${candidate.versionSpecific ? (candidate.unmodeledVersion ? "No — unmodeled" : "Yes") : "N/A"} |
 | Deployments | ${list(candidate.deployments)} |
 | Product plans | ${list(candidate.plans)} |
 | Possible catalog surfaces | ${list(candidate.impactSurfaces)} |

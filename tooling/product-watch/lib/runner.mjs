@@ -1,6 +1,10 @@
 import {
+  assertAllowedDocsUrl,
   buildCandidates,
+  buildVersionDiscoveredEntry,
+  compareGhesVersions,
   ingestConfiguredSources,
+  ingestSourceContent,
   parseIssueMarkers,
   planIssueActions,
   renderIssueBody,
@@ -68,6 +72,15 @@ function titleFor(candidate) {
   return title.length <= 256 ? title : `${title.slice(0, 252)}...`;
 }
 
+// `redirect: "manual"` is required on every docs fetch, static or dynamic:
+// the default fetch behavior transparently follows redirects to whatever
+// host/path the response's `Location` header names, which would let a
+// compromised or misconfigured docs page redirect an otherwise-allowed
+// request off the authoritative host/path allow-list enforced by
+// `assertAllowedDocsUrl`. With redirects left unfollowed, a 3xx response
+// falls through the existing `!response.ok` check below and is treated the
+// same as any other source failure -- fail closed, one request, no
+// automatic hop to an unvalidated URL.
 async function fetchText(source, config, fetchImpl) {
   const response = await fetchImpl(source.url, {
     headers: {
@@ -76,12 +89,99 @@ async function fetchText(source, config, fetchImpl) {
         : "text/html, application/xhtml+xml;q=0.9",
       "User-Agent": config.request.userAgent,
     },
+    redirect: "manual",
     signal: AbortSignal.timeout(config.request.timeoutMs),
   });
   if (!response.ok) {
     throw new Error(`${response.status} ${response.statusText}`);
   }
   return response.text();
+}
+
+async function fetchTextFromUrl(url, config, fetchImpl) {
+  const response = await fetchImpl(url, {
+    headers: {
+      Accept: "text/html, application/xhtml+xml;q=0.9",
+      "User-Agent": config.request.userAgent,
+    },
+    redirect: "manual",
+    signal: AbortSignal.timeout(config.request.timeoutMs),
+  });
+  if (!response.ok) {
+    throw new Error(`${response.status} ${response.statusText}`);
+  }
+  return response.text();
+}
+
+function maxGhesVersion(versions) {
+  return versions.reduce((max, value) => (compareGhesVersions(value, max) > 0 ? value : max));
+}
+
+/**
+ * Discovers GHES versions present in the release index but not yet modeled
+ * in the catalog (newer than the configured baseline). For each discovered
+ * version this always produces one "version discovered" candidate entry
+ * (regardless of whether its release notes could be retrieved) plus, when
+ * retrievable, per-release candidates (feature candidate/stable/patch) for
+ * that version's release notes, each marked as an unmodeled version.
+ *
+ * The templated release-notes URL is only ever built from a checked-in
+ * template plus a version string already validated as `major.minor` by the
+ * index table parser, and is re-validated against the authoritative
+ * GitHub Docs host/path allow-list immediately before any fetch — this keeps
+ * dynamically followed URLs from becoming an SSRF surface.
+ *
+ * Fetch failures here are handled per-version and never counted against the
+ * ingestion-level `errors` that gate GitHub mutations: a version that cannot
+ * be documented still gets its own review issue defaulting to unavailable,
+ * rather than aborting the entire run.
+ */
+async function discoverGhesEntries({config, ingestion, fixtureSources, fetchImpl}) {
+  const ghesRelease = config.ghesRelease;
+  if (!ghesRelease) {
+    return [];
+  }
+  const indexSource = ingestion.sources.find((source) => source.id === ghesRelease.indexSourceId);
+  const rows = indexSource?.versions ?? [];
+  const staticVersions = new Set(
+    config.sources.filter((source) => source.version).map((source) => source.version),
+  );
+  const maxModeled = maxGhesVersion(ghesRelease.modeledVersions);
+  const discoveredRows = rows
+    .filter((row) => compareGhesVersions(row.version, maxModeled) > 0)
+    .filter((row) => !staticVersions.has(row.version))
+    .slice(0, ghesRelease.maxDiscoveredVersions ?? 5);
+
+  const entries = [];
+  for (const row of discoveredRows) {
+    let fetchError = null;
+    let releaseEntries = [];
+    try {
+      const url = ghesRelease.releaseNotesUrlTemplate.replace("{version}", row.version);
+      assertAllowedDocsUrl(url, ghesRelease);
+      const raw = fixtureSources && Object.hasOwn(fixtureSources, url)
+        ? fixtureSources[url]
+        : await fetchTextFromUrl(url, config, fetchImpl);
+      const pseudoSource = {
+        id: `ghes-discovered-${row.version}`,
+        label: `GitHub Enterprise Server ${row.version} release notes (discovered)`,
+        url,
+        deployments: ["ghes"],
+        version: row.version,
+        headingLevels: [2],
+        kind: "html-sections",
+      };
+      releaseEntries = ingestSourceContent(pseudoSource, raw)
+        .map((entry) => ({...entry, discoveredVersion: true}));
+    } catch (error) {
+      fetchError = error instanceof Error ? error : new Error(String(error));
+    }
+    entries.push(
+      buildVersionDiscoveredEntry(row, ghesRelease, ghesRelease.indexSourceId, fetchError),
+    );
+    entries.push(...releaseEntries);
+  }
+  return entries;
 }
 
 export async function runProductWatch({
@@ -104,7 +204,10 @@ export async function runProductWatch({
     }
     return fetchText(source, config, fetchImpl);
   });
-  const candidates = buildCandidates(ingestion.entries, config)
+  const discoveryEntries = ingestion.errors.length === 0
+    ? await discoverGhesEntries({config, ingestion, fixtureSources, fetchImpl})
+    : [];
+  const candidates = buildCandidates([...ingestion.entries, ...discoveryEntries], config)
     .map((candidate) => ({...candidate, retrievedAt}));
   const report = {
     schemaVersion: 1,
@@ -115,7 +218,7 @@ export async function runProductWatch({
     status: ingestion.errors.length > 0 ? "partial-source-failure" : "pending",
     sources: ingestion.sources,
     errors: ingestion.errors,
-    scannedEntryCount: ingestion.entries.length,
+    scannedEntryCount: ingestion.entries.length + discoveryEntries.length,
     candidateCount: candidates.length,
     candidates,
     actions: [],
