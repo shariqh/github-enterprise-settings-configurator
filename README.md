@@ -49,7 +49,7 @@ For GitHub Pages, Vite uses the `/github-enterprise-settings-configurator/` base
 
 - No authentication, backend, tenant connection, observed-state scan, or direct apply.
 - No compliance grade, universal security score, breach prediction, or cross-customer comparison.
-- No claim that unknown tenant state is divergent. Not applicable is distinct from a tailored override.
+- No claim that unknown tenant state is divergent. Non-applicable decisions are excluded rather than scored or exported as overrides.
 - No recommended promotional AI-credit amounts.
 - No claim that undocumented GHE.com product availability matches GitHub.com; unsupported or ambiguous combinations remain explicit.
 

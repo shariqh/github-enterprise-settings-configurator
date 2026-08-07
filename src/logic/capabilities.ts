@@ -159,13 +159,13 @@ const unknownIssue = (
   message: `${label} is unresolved. Choose a supported value before building or exporting the plan.`,
 })
 
-const identityMatches = (profile: Profile): boolean =>
+const identityPrefixMatches = (
+  profile: Profile,
+  fields: (keyof IdentityCompatibility)[],
+): boolean =>
   identityCompatibilityMatrix.some((combination) =>
-    combination.deployment === profile.deployment
-    && combination.basePlan === profile.basePlan
-    && combination.accountModel === profile.accountModel
-    && combination.authentication === profile.authentication
-    && combination.provisioning === profile.provisioning)
+    fields.every((field) =>
+      profile[field] === "unknown" || combination[field] === profile[field]))
 
 const licenseSupported = (
   product: LicensedProductId,
@@ -192,30 +192,74 @@ const copilotSupported = (plan: CopilotPlan, profile: Profile): boolean => {
 
 export function getProfileErrors(profile: Profile): ProfileIssue[] {
   const errors: ProfileIssue[] = []
-  if (profile.basePlan === "unknown") errors.push(unknownIssue("basePlan", "Base plan"))
-  if (profile.accountModel === "unknown") errors.push(unknownIssue("accountModel", "Account model"))
-  if (profile.authentication === "unknown") {
-    errors.push(unknownIssue("authentication", "Authentication method"))
-  }
-  if (profile.provisioning === "unknown") {
-    errors.push(unknownIssue("provisioning", "Provisioning method"))
-  }
-  if (profile.repositoryVisibility === "unknown") {
-    errors.push(unknownIssue("repositoryVisibility", "Repository visibility"))
+  const basePlanCompatible = profile.basePlan === "unknown"
+    || identityPrefixMatches(profile, ["deployment", "basePlan"])
+  const accountModelCompatible = basePlanCompatible
+    && (
+      profile.accountModel === "unknown"
+      || identityPrefixMatches(profile, ["deployment", "basePlan", "accountModel"])
+    )
+  const authenticationCompatible = accountModelCompatible
+    && (
+      profile.authentication === "unknown"
+      || identityPrefixMatches(profile, ["deployment", "basePlan", "accountModel", "authentication"])
+    )
+
+  if (profile.basePlan === "unknown") {
+    errors.push(unknownIssue("basePlan", "Base plan"))
+  } else if (!basePlanCompatible) {
+    errors.push({
+      code: "incompatible-base-plan",
+      field: "basePlan",
+      message: "The selected base plan is not supported for this deployment.",
+    })
   }
 
-  if (
-    profile.basePlan !== "unknown"
-    && profile.accountModel !== "unknown"
-    && profile.authentication !== "unknown"
-    && profile.provisioning !== "unknown"
-    && !identityMatches(profile)
+  if (profile.accountModel === "unknown") {
+    errors.push(unknownIssue("accountModel", "Account model"))
+  } else if (basePlanCompatible && !accountModelCompatible) {
+    errors.push({
+      code: "incompatible-account-model",
+      field: "accountModel",
+      message: "The selected account model is not supported for this deployment and base plan.",
+    })
+  }
+
+  if (profile.authentication === "unknown") {
+    if (accountModelCompatible) {
+      errors.push(unknownIssue("authentication", "Authentication method"))
+    }
+  } else if (accountModelCompatible && !authenticationCompatible) {
+    errors.push({
+      code: "incompatible-authentication",
+      field: "authentication",
+      message: "The selected authentication method is not supported for this deployment, base plan, and account model.",
+    })
+  }
+
+  if (profile.provisioning === "unknown") {
+    if (authenticationCompatible) {
+      errors.push(unknownIssue("provisioning", "Provisioning method"))
+    }
+  } else if (
+    authenticationCompatible
+    && !identityPrefixMatches(profile, [
+      "deployment",
+      "basePlan",
+      "accountModel",
+      "authentication",
+      "provisioning",
+    ])
   ) {
     errors.push({
-      code: "incompatible-identity",
-      field: "accountModel",
-      message: "The selected account, authentication, and provisioning methods are not supported for this deployment and base plan.",
+      code: "incompatible-provisioning",
+      field: "provisioning",
+      message: "The selected provisioning method is not supported for this identity configuration.",
     })
+  }
+
+  if (profile.repositoryVisibility === "unknown") {
+    errors.push(unknownIssue("repositoryVisibility", "Repository visibility"))
   }
 
   if (
@@ -297,10 +341,14 @@ export function resolveCapabilities(profile: Profile): ReadonlySet<CapabilityId>
   if (profile.accountModel === "instance") capabilities.add("instance-accounts")
   if (profile.authentication === "saml") capabilities.add("enterprise-saml")
   if (profile.authentication === "oidc") capabilities.add("oidc")
+  if (profile.authentication === "built-in") capabilities.add("built-in-authentication")
+  if (profile.authentication === "cas") capabilities.add("cas-authentication")
   if (profile.provisioning === "scim") capabilities.add("scim")
   if (profile.provisioning === "scim-access") capabilities.add("scim-access")
   if (profile.provisioning === "jit") capabilities.add("jit-provisioning")
   if (profile.provisioning === "ldap") capabilities.add("ldap-lifecycle")
+  if (profile.provisioning === "first-sign-in") capabilities.add("first-sign-in-provisioning")
+  if (profile.provisioning === "manual") capabilities.add("manual-provisioning")
   if (profile.deployment === "ghes" && profile.provisioning === "scim") {
     capabilities.add("ghes-scim-preview")
   }
@@ -329,10 +377,12 @@ export function resolveCapabilities(profile: Profile): ReadonlySet<CapabilityId>
   ) {
     capabilities.add("code-quality")
   }
-  if (profile.licensedProducts.copilot === "business") capabilities.add("copilot-business")
-  if (profile.licensedProducts.copilot === "enterprise") {
-    capabilities.add("copilot-business")
-    capabilities.add("copilot-enterprise")
+  if (copilotSupported(profile.licensedProducts.copilot, profile)) {
+    if (profile.licensedProducts.copilot === "business") capabilities.add("copilot-business")
+    if (profile.licensedProducts.copilot === "enterprise") {
+      capabilities.add("copilot-business")
+      capabilities.add("copilot-enterprise")
+    }
   }
 
   return capabilities
@@ -368,13 +418,23 @@ const optionsFor = <T extends string>(
   }))
 
 function getProfileOptions(profile: Profile): ProfileOptions {
-  const matching = (patch: Partial<IdentityCompatibility>): boolean =>
+  const matching = (constraints: Partial<IdentityCompatibility>): boolean =>
     identityCompatibilityMatrix.some((combination) =>
-      combination.deployment === (patch.deployment ?? profile.deployment)
-      && combination.basePlan === (patch.basePlan ?? profile.basePlan)
-      && combination.accountModel === (patch.accountModel ?? profile.accountModel)
-      && combination.authentication === (patch.authentication ?? profile.authentication)
-      && combination.provisioning === (patch.provisioning ?? profile.provisioning))
+      (Object.keys(constraints) as (keyof IdentityCompatibility)[])
+        .every((key) => constraints[key] === undefined || combination[key] === constraints[key]))
+
+  const deploymentAndPlan = {
+    deployment: profile.deployment,
+    ...(profile.basePlan === "unknown" ? {} : { basePlan: profile.basePlan }),
+  }
+  const deploymentPlanAndAccount = {
+    ...deploymentAndPlan,
+    ...(profile.accountModel === "unknown" ? {} : { accountModel: profile.accountModel }),
+  }
+  const deploymentPlanAccountAndAuthentication = {
+    ...deploymentPlanAndAccount,
+    ...(profile.authentication === "unknown" ? {} : { authentication: profile.authentication }),
+  }
 
   const statusOptions = (product: LicensedProductId): ProfileOption<LicenseStatus>[] =>
     optionsFor(licenseStatuses, profile.licensedProducts[product], (status) =>
@@ -385,11 +445,20 @@ function getProfileOptions(profile: Profile): ProfileOptions {
       identityCompatibilityMatrix.some((combination) =>
         combination.deployment === profile.deployment && combination.basePlan === basePlan), "base plan"),
     accountModel: optionsFor(accountModels, profile.accountModel, (accountModel) =>
-      matching({ accountModel: accountModel as Exclude<AccountModel, "unknown"> }), "account model"),
+      matching({
+        ...deploymentAndPlan,
+        accountModel: accountModel as Exclude<AccountModel, "unknown">,
+      }), "account model"),
     authentication: optionsFor(authenticationMethods, profile.authentication, (authentication) =>
-      matching({ authentication: authentication as Exclude<AuthenticationMethod, "unknown"> }), "authentication method"),
+      matching({
+        ...deploymentPlanAndAccount,
+        authentication: authentication as Exclude<AuthenticationMethod, "unknown">,
+      }), "authentication method"),
     provisioning: optionsFor(provisioningMethods, profile.provisioning, (provisioning) =>
-      matching({ provisioning: provisioning as Exclude<ProvisioningMethod, "unknown"> }), "provisioning method"),
+      matching({
+        ...deploymentPlanAccountAndAuthentication,
+        provisioning: provisioning as Exclude<ProvisioningMethod, "unknown">,
+      }), "provisioning method"),
     repositoryVisibility: optionsFor(
       repositoryVisibilities,
       profile.repositoryVisibility,

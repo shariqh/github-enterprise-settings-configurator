@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest"
 import {
+  acceptDecisionValues,
   createDefaultPlanDraft,
   defaultProfile,
   reconcileDecisionState,
+  reconcilePlanDraftState,
   transitionProfile,
 } from "./profile"
-import type { Setting } from "../types"
+import type { RecommendedSetting, Setting } from "../types"
 
 const setting = (id: string, choices = ["strong", "light"]): Setting => ({
   id,
@@ -107,6 +109,24 @@ describe("profile transitions", () => {
     expect(transitioned.profile.planningScope.actions).toBe(true)
     expect(transitioned.notices.at(-1)?.code).toBe("code-quality-actions-enabled")
   })
+
+  it("does not resolve unknown identity fields when an unrelated field changes", () => {
+    const unresolved = {
+      ...defaultProfile,
+      deployment: "ghes" as const,
+      accountModel: "instance" as const,
+      authentication: "unknown" as const,
+      provisioning: "unknown" as const,
+      repositoryVisibility: "unknown" as const,
+    }
+    const transitioned = transitionProfile(unresolved, { repositoryVisibility: "private-internal" })
+    expect(transitioned.profile).toMatchObject({
+      authentication: "unknown",
+      provisioning: "unknown",
+      repositoryVisibility: "private-internal",
+    })
+    expect(transitioned.notices).toEqual([])
+  })
 })
 
 describe("decision reconciliation", () => {
@@ -131,6 +151,59 @@ describe("decision reconciliation", () => {
     expect(reconciled.dormantSelections).toEqual({})
     expect(reconciled.reviewed).toEqual({})
     expect(reconciled.notices[0].code).toBe("restored-security")
+  })
+
+  it("removes stored state for a derived setting instead of preserving an override", () => {
+    const derived = { ...setting("identity"), editable: false }
+    const reconciled = reconcileDecisionState({
+      selections: { identity: "light" },
+      dormantSelections: {},
+      reviewed: { identity: true },
+    }, [derived])
+    expect(reconciled.selections).toEqual({})
+    expect(reconciled.dormantSelections).toEqual({})
+    expect(reconciled.reviewed).toEqual({})
+    expect(reconciled.notices[0]?.code).toBe("derived-identity")
+  })
+
+  it("normalizes imported active and dormant decisions against the resolved profile", () => {
+    const normalized = reconcilePlanDraftState({
+      ...createDefaultPlanDraft(),
+      selections: {
+        "enterprise-type": "ghes",
+        "admin-redundancy": "three",
+        "identity-lifecycle": "ghes-cas",
+      },
+      dormantSelections: { "allowed-actions": "verified" },
+      reviewed: {
+        "enterprise-type": true,
+        "admin-redundancy": true,
+        "identity-lifecycle": true,
+      },
+    })
+    expect(normalized.state.selections).toEqual({
+      "admin-redundancy": "three",
+      "allowed-actions": "verified",
+    })
+    expect(normalized.state.dormantSelections).toEqual({})
+    expect(normalized.state.reviewed).toEqual({ "admin-redundancy": true })
+  })
+
+  it("materializes accepted recommendations so later recommendation changes cannot rewrite reviewed values", () => {
+    const recommendedSetting: RecommendedSetting = {
+      setting: setting("security"),
+      recommended: "strong",
+      selected: "strong",
+      disposition: "Recommended",
+    }
+    const accepted = acceptDecisionValues(
+      { selections: {}, reviewed: {} },
+      [recommendedSetting],
+    )
+    expect(accepted).toEqual({
+      selections: { security: "strong" },
+      reviewed: { security: true },
+    })
   })
 
   it("creates isolated default draft records", () => {

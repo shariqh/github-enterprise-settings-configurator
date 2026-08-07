@@ -69,6 +69,50 @@ describe("identity compatibility", () => {
       accountModel: "personal",
     })).toBe(false)
   })
+
+  it("reports the first incompatible identity dimension before downstream unknowns", () => {
+    const errors = resolveProfile({
+      ...defaultProfile,
+      deployment: "residency",
+      accountModel: "personal",
+      authentication: "unknown",
+      provisioning: "none",
+      repositoryVisibility: "unknown",
+    }).errors
+    expect(errors.some((error) => error.code === "incompatible-account-model")).toBe(true)
+    expect(errors.some((error) => error.code === "unknown-authentication")).toBe(false)
+  })
+
+  it("does not reject compatible provisioning while authentication remains unresolved", () => {
+    const errors = resolveProfile({
+      ...defaultProfile,
+      authentication: "unknown",
+      provisioning: "none",
+      repositoryVisibility: "unknown",
+    }).errors
+    expect(errors.some((error) => error.code === "unknown-authentication")).toBe(true)
+    expect(errors.some((error) => error.code === "incompatible-provisioning")).toBe(false)
+  })
+
+  it("offers identity dimensions progressively instead of deadlocking compatible transitions", () => {
+    const defaultOptions = resolveProfile(defaultProfile).options
+    expect(defaultOptions.accountModel.find((option) => option.value === "managed")?.available).toBe(true)
+
+    const unresolvedGhes = resolveProfile({
+      ...defaultProfile,
+      deployment: "ghes",
+      accountModel: "instance",
+      authentication: "unknown",
+      provisioning: "unknown",
+      repositoryVisibility: "unknown",
+    }).options
+    for (const method of ["built-in", "saml", "ldap", "cas"]) {
+      expect(
+        unresolvedGhes.authentication.find((option) => option.value === method)?.available,
+        `GHES authentication ${method}`,
+      ).toBe(true)
+    }
+  })
 })
 
 describe("licensed product combinations", () => {
@@ -158,6 +202,38 @@ describe("capability resolution", () => {
     expect(capabilities.has("secret-protection")).toBe(true)
     expect(capabilities.has("code-security")).toBe(false)
     expect(capabilities.has("code-quality")).toBe(true)
+  })
+
+  it("distinguishes built-in and CAS authentication lifecycles", () => {
+    const builtIn = identityCompatibilityMatrix.find(
+      (entry) => entry.deployment === "ghes" && entry.authentication === "built-in",
+    )!
+    const cas = identityCompatibilityMatrix.find(
+      (entry) => entry.deployment === "ghes" && entry.authentication === "cas",
+    )!
+
+    const builtInCapabilities = resolveProfile(profileFor(builtIn)).capabilities
+    expect(builtInCapabilities.has("built-in-authentication")).toBe(true)
+    expect(builtInCapabilities.has("manual-provisioning")).toBe(true)
+    expect(builtInCapabilities.has("cas-authentication")).toBe(false)
+
+    const casCapabilities = resolveProfile(profileFor(cas)).capabilities
+    expect(casCapabilities.has("cas-authentication")).toBe(true)
+    expect(casCapabilities.has("first-sign-in-provisioning")).toBe(true)
+    expect(casCapabilities.has("built-in-authentication")).toBe(false)
+  })
+
+  it("does not grant Copilot capabilities to an impossible GHES import state", () => {
+    const ghes = identityCompatibilityMatrix.find((entry) => entry.deployment === "ghes")!
+    const capabilities = resolveProfile({
+      ...profileFor(ghes),
+      licensedProducts: {
+        ...defaultProfile.licensedProducts,
+        copilot: "business",
+      },
+    }).capabilities
+    expect(capabilities.has("copilot-business")).toBe(false)
+    expect(capabilities.has("copilot-enterprise")).toBe(false)
   })
 
   it("evaluates declarative all/any/none requirements", () => {

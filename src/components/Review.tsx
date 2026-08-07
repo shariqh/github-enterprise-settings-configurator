@@ -24,11 +24,11 @@ export function Review({
   onDownloadMarkdown,
   onOpenDomain,
 }: ReviewProps) {
-  const applicable = settings.filter((item) => item.disposition !== "Not applicable")
-  const reviewable = applicable.filter((item) => item.setting.editable !== false)
-  const recommended = applicable.filter((item) => item.disposition === "Recommended")
-  const overrides = applicable.filter((item) => item.disposition === "Override")
-  const notApplicable = settings.filter((item) => item.disposition === "Not applicable")
+  // settings is already applicable-only (RecommendedSetting carries only
+  // Recommended/Override dispositions), so no "not applicable" filtering happens here.
+  const reviewable = settings.filter((item) => item.setting.editable !== false)
+  const recommended = settings.filter((item) => item.disposition === "Recommended")
+  const overrides = settings.filter((item) => item.disposition === "Override")
   const profiles = buildDomainProfiles(settings)
 
   return (
@@ -49,10 +49,10 @@ export function Review({
       )}
 
       <div className="review-summary">
+        <div><strong>{settings.length}</strong><span>applicable decisions</span></div>
         <div><strong>{reviewedCount} / {reviewable.length}</strong><span>decisions reviewed</span></div>
         <div><strong>{recommended.length}</strong><span>recommended values</span></div>
         <div><strong>{overrides.length}</strong><span>deliberate overrides</span></div>
-        <div><strong>{notApplicable.length}</strong><span>not applicable</span></div>
       </div>
 
       <div className="review-visuals">

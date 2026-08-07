@@ -1,10 +1,12 @@
 import { defaultIntent } from "./intent"
 import { identityCompatibilityMatrix } from "./capabilities"
+import { getRecommendedSettings } from "./recommendations"
 import type {
   MigrationNotice,
   PlanDraftState,
   PriorityId,
   Profile,
+  RecommendedSetting,
   Setting,
 } from "../types"
 
@@ -66,6 +68,16 @@ const chooseIdentity = (
   const patchedIdentityKeys = new Set<IdentityKey>(
     identityKeys.filter((key) => Object.hasOwn(patch, key)),
   )
+  if (patchedIdentityKeys.size === 0) {
+    return {
+      deployment: current.deployment,
+      basePlan: current.basePlan,
+      accountModel: current.accountModel,
+      authentication: current.authentication,
+      provisioning: current.provisioning,
+    }
+  }
+
   let candidates = identityCompatibilityMatrix.filter((combination) =>
     [...patchedIdentityKeys].every((key) => combination[key] === requested[key]))
 
@@ -189,6 +201,20 @@ export function reconcileDecisionState(
   const notices: MigrationNotice[] = []
   const applicableById = new Map(applicableSettings.map((setting) => [setting.id, setting]))
 
+  for (const [settingId, setting] of applicableById) {
+    if (setting.editable !== false) continue
+    const hadStoredState = settingId in selections || settingId in dormantSelections || settingId in reviewed
+    delete selections[settingId]
+    delete dormantSelections[settingId]
+    delete reviewed[settingId]
+    if (hadStoredState) {
+      notices.push({
+        code: `derived-${settingId}`,
+        message: `${settingId} is derived from the target profile, so its stored choice was replaced by the compatible value.`,
+      })
+    }
+  }
+
   for (const [settingId, choiceId] of Object.entries(selections)) {
     const setting = applicableById.get(settingId)
     if (setting?.choices.some((choice) => choice.id === choiceId)) continue
@@ -220,4 +246,37 @@ export function reconcileDecisionState(
   }
 
   return { selections, dormantSelections, reviewed, notices }
+}
+
+export function reconcilePlanDraftState(state: PlanDraftState): {
+  state: PlanDraftState
+  notices: MigrationNotice[]
+} {
+  const applicableSettings = getRecommendedSettings(state).map((item) => item.setting)
+  const reconciled = reconcileDecisionState(state, applicableSettings)
+  return {
+    state: {
+      ...state,
+      selections: reconciled.selections,
+      dormantSelections: reconciled.dormantSelections,
+      reviewed: reconciled.reviewed,
+    },
+    notices: reconciled.notices,
+  }
+}
+
+export function acceptDecisionValues(
+  state: Pick<PlanDraftState, "selections" | "reviewed">,
+  settings: RecommendedSetting[],
+): Pick<PlanDraftState, "selections" | "reviewed"> {
+  const selections = { ...state.selections }
+  const reviewed = { ...state.reviewed }
+
+  for (const item of settings) {
+    if (item.setting.editable === false) continue
+    selections[item.setting.id] = item.selected
+    reviewed[item.setting.id] = true
+  }
+
+  return { selections, reviewed }
 }
