@@ -1,0 +1,235 @@
+{
+  "schemaVersion": 2,
+  "state": {
+    "issueTitle": "[product-watch] State",
+    "issueLabel": "product-watch:state",
+    "reviewLabel": "product-watch:review",
+    "maxFingerprints": 700
+  },
+  "request": {
+    "userAgent": "github-enterprise-settings-configurator-product-watch/2.0",
+    "timeoutMs": 30000,
+    "maxEntriesPerSource": 150
+  },
+  "ghesRelease": {
+    "modeledVersions": ["3.21"],
+    "indexSourceId": "ghes-release-index",
+    "releaseNotesUrlTemplate": "https://docs.github.com/en/enterprise-server@{version}/admin/release-notes",
+    "allowedHosts": ["docs.github.com"],
+    "allowedPathPrefix": "/en/enterprise-server@",
+    "maxDiscoveredVersions": 3
+  },
+  "sources": [
+    {
+      "id": "github-changelog",
+      "label": "GitHub Changelog",
+      "kind": "rss",
+      "url": "https://github.blog/changelog/feed/",
+      "baselineReviewedThrough": "2026-01-01T00:00:00.000Z",
+      "deployments": ["ghec", "ghe.com", "ghes"]
+    },
+    {
+      "id": "github-docs-code-security-configurations",
+      "label": "GitHub Docs: security configurations",
+      "kind": "html-page",
+      "url": "https://docs.github.com/en/code-security/how-tos/secure-at-scale/configure-organization-security/establish-complete-coverage/configure-global-settings",
+      "deployments": ["ghec", "ghe.com", "ghes"]
+    },
+    {
+      "id": "github-docs-rest-api-versions",
+      "label": "GitHub Docs: REST API versions",
+      "kind": "html-page",
+      "url": "https://docs.github.com/en/rest/about-the-rest-api/api-versions",
+      "deployments": ["ghec", "ghe.com", "ghes"]
+    },
+    {
+      "id": "ghes-3.21-release-notes",
+      "label": "GitHub Enterprise Server 3.21 release notes",
+      "kind": "html-sections",
+      "url": "https://docs.github.com/en/enterprise-server@3.21/admin/release-notes",
+      "deployments": ["ghes"],
+      "version": "3.21",
+      "headingLevels": [2]
+    },
+    {
+      "id": "ghes-release-index",
+      "label": "GitHub Enterprise Server all releases",
+      "kind": "ghes-release-index",
+      "url": "https://docs.github.com/en/enterprise-server@3.21/admin/all-releases",
+      "deployments": ["ghes"]
+    }
+  ],
+  "products": [
+    {
+      "id": "code-quality",
+      "label": "GitHub Code Quality",
+      "keywords": ["github code quality", "code quality", "quality findings"]
+    },
+    {
+      "id": "secret-protection",
+      "label": "GitHub Secret Protection",
+      "keywords": ["github secret protection", "secret protection", "secret scanning", "push protection"]
+    },
+    {
+      "id": "code-security",
+      "label": "GitHub Code Security",
+      "keywords": ["github code security", "code security", "code scanning", "dependabot"]
+    },
+    {
+      "id": "actions",
+      "label": "GitHub Actions",
+      "keywords": ["github actions", "workflow token", "actions policy", "hosted runner", "self-hosted runner"]
+    },
+    {
+      "id": "copilot",
+      "label": "GitHub Copilot",
+      "keywords": ["github copilot", "copilot business", "copilot enterprise", "copilot usage metrics"]
+    },
+    {
+      "id": "enterprise-server",
+      "label": "GitHub Enterprise Server",
+      "keywords": ["github enterprise server", "ghes"]
+    }
+  ],
+  "domains": [
+    {
+      "id": "identity-administration",
+      "label": "Identity & administration",
+      "keywords": ["enterprise managed users", "emu", "saml", "single sign-on", "scim", "verified domain"],
+      "settings": [
+        {"id": "enterprise-type", "keywords": ["enterprise managed users", "emu", "personal accounts"]},
+        {"id": "sso-scim", "keywords": ["saml", "single sign-on", "scim", "identity provider"]},
+        {"id": "admin-redundancy", "keywords": ["enterprise owner", "organization owner", "admin role"]},
+        {"id": "verified-domains", "keywords": ["verified domain", "domain verification"]}
+      ]
+    },
+    {
+      "id": "organization-repository-governance",
+      "label": "Organization & repository governance",
+      "keywords": ["repository policy", "repository rules", "ruleset", "outside collaborator", "repository creation", "default repository permission"],
+      "settings": [
+        {"id": "default-repo-permission", "keywords": ["default repository permission", "base permission"]},
+        {"id": "member-repo-creation", "keywords": ["repository creation", "create repositories"]},
+        {"id": "default-branch-ruleset", "keywords": ["ruleset", "branch protection", "rule insights"]},
+        {"id": "outside-collaborators", "keywords": ["outside collaborator", "external collaborator"]}
+      ]
+    },
+    {
+      "id": "code-security",
+      "label": "Code security",
+      "keywords": ["security configuration", "github advanced security", "github code security", "github secret protection", "github code quality", "code quality", "code scanning", "secret scanning", "push protection", "dependabot", "dependency graph", "security-related organization api fields"],
+      "settings": [
+        {"id": "security-configuration", "keywords": ["security configuration", "github advanced security", "github code security", "github secret protection", "github code quality", "code quality", "advanced_security_enabled_for_new_repositories"]},
+        {"id": "secret-scanning", "keywords": ["secret scanning", "push protection", "secret protection", "secret_scanning_enabled_for_new_repositories", "secret_scanning_push_protection_enabled_for_new_repositories"]},
+        {"id": "dependency-coverage", "keywords": ["dependabot", "dependency graph", "dependency_graph_enabled_for_new_repositories"]}
+      ]
+    },
+    {
+      "id": "actions-supply-chain",
+      "label": "Actions & supply chain",
+      "keywords": ["github actions", "workflow token", "actions policy", "runner", "artifact attestation", "actions cache"],
+      "settings": [
+        {"id": "allowed-actions", "keywords": ["actions policy", "allowed actions", "actions permissions"]},
+        {"id": "workflow-token", "keywords": ["workflow token", "github_token", "workflow permissions"]},
+        {"id": "runner-network", "keywords": ["runner", "private networking", "network configuration"]}
+      ]
+    },
+    {
+      "id": "audit-visibility",
+      "label": "Audit visibility",
+      "keywords": ["audit log", "audit streaming", "audit event"],
+      "settings": [
+        {"id": "audit-streaming", "keywords": ["audit streaming", "audit log stream", "audit event"]}
+      ]
+    },
+    {
+      "id": "copilot-governance",
+      "label": "Copilot governance",
+      "keywords": ["github copilot", "copilot policy", "copilot usage metrics", "content exclusion", "model policy", "public code"],
+      "settings": [
+        {"id": "copilot-license-topology", "keywords": ["copilot business", "copilot enterprise", "license assignment"]},
+        {"id": "copilot-public-code", "keywords": ["public code", "code matching"]},
+        {"id": "copilot-content-exclusion", "keywords": ["content exclusion"]},
+        {"id": "copilot-model-policy", "keywords": ["model policy", "model availability", "model retirement"]},
+        {"id": "copilot-usage-metrics", "keywords": ["usage metrics", "metrics api", "copilot metrics"]}
+      ]
+    },
+    {
+      "id": "copilot-cost-controls",
+      "label": "Copilot cost controls",
+      "keywords": ["copilot billing", "premium request", "usage-based billing", "budget", "cost center"],
+      "settings": [
+        {"id": "cost-center-mapping", "keywords": ["cost center"]},
+        {"id": "cculb", "keywords": ["usage-based billing", "premium request"]},
+        {"id": "included-usage-cap", "keywords": ["included usage", "premium request allowance"]},
+        {"id": "enterprise-budget-backstop", "keywords": ["enterprise budget", "budget alert", "budget limit"]}
+      ]
+    }
+  ],
+  "changeTypes": [
+    {
+      "id": "deprecation",
+      "label": "Deprecation or removal",
+      "patterns": ["deprecat", "sunset", "removal", "removed", "end of support", "no longer supported"]
+    },
+    {
+      "id": "renamed-product",
+      "label": "Renamed product or terminology",
+      "patterns": ["renamed", "new name", "formerly known", "terminology"]
+    },
+    {
+      "id": "billing-entitlement",
+      "label": "Billing or entitlement change",
+      "patterns": ["billing", "entitlement", "license", "pricing", "premium request", "plan availability"]
+    },
+    {
+      "id": "api-change",
+      "label": "API or automation change",
+      "patterns": ["rest api", "graphql api", "api endpoint", "response field", "request field", "webhook", "api version"]
+    },
+    {
+      "id": "availability-change",
+      "label": "Availability change",
+      "patterns": ["generally available", "public preview", "private preview", "release candidate", "available for", "rollout"]
+    },
+    {
+      "id": "new-capability",
+      "label": "New capability",
+      "patterns": ["new capability", "new feature", "now includes", "can now", "introducing", "launching", "adds support"]
+    },
+    {
+      "id": "documentation-clarification",
+      "label": "Documentation clarification",
+      "patterns": ["documentation", "docs", "clarif", "updated guidance"]
+    }
+  ],
+  "releaseStages": [
+    {"id": "deprecation", "patterns": ["deprecat", "sunset", "removal", "removed", "end of support"]},
+    {"id": "private-preview", "patterns": ["private preview"]},
+    {"id": "public-preview", "patterns": ["public preview"]},
+    {"id": "release-candidate", "patterns": ["release candidate"]},
+    {"id": "ga", "patterns": ["generally available", "general availability", "now available"]}
+  ],
+  "impactSurfaces": [
+    {"id": "applicability", "patterns": ["available for", "supported on", "enterprise server", "plan availability", "entitlement"]},
+    {"id": "recommendation-logic", "patterns": ["default", "recommended", "policy", "enforce", "require"]},
+    {"id": "choices", "patterns": ["setting", "option", "enable", "disable", "exemption"]},
+    {"id": "automation-api-mapping", "patterns": ["api", "graphql", "webhook", "endpoint", "field"]},
+    {"id": "scoring-effort-metadata", "patterns": ["billing", "pricing", "license", "migration", "rollout"]},
+    {"id": "documentation-only", "patterns": ["documentation", "docs", "clarif"]}
+  ],
+  "deploymentKeywords": {
+    "ghec": ["github enterprise cloud", "github.com", "ghec"],
+    "ghe.com": ["ghe.com", "data residency"],
+    "ghes": ["github enterprise server", "ghes"]
+  },
+  "planKeywords": {
+    "enterprise-cloud": ["enterprise cloud", "ghec", "github.com"],
+    "enterprise-server": ["enterprise server", "ghes"],
+    "copilot-business": ["copilot business"],
+    "copilot-enterprise": ["copilot enterprise"],
+    "github-code-security": ["github code security"],
+    "github-secret-protection": ["github secret protection"],
+    "github-advanced-security": ["github advanced security"]
+  }
+}
