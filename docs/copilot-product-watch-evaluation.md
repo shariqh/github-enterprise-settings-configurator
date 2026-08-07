@@ -26,9 +26,9 @@ Before Copilot starts, a deterministic selector:
 5. Selects at most five new or changed fingerprints.
 6. Persists the exact selected issue number, candidate key, and fingerprint as
    a run artifact before agent execution.
-7. Emits a `noop` safe output through gh-aw's generated safe-output path when
-   there is no work. The Copilot harness detects it before inference, so no AI
-   Credits are consumed.
+7. Exposes `candidate_count` from the deterministic job. The generated agent
+   job has a hard `if: candidate_count != '0'` gate, so zero candidates skip the
+   entire agent job, create no comment, and consume no inference AI Credits.
 
 The agent has read-only contents, issues, and pull-request permissions. The
 only configured write safe output is a custom job that adds up to five
@@ -51,6 +51,12 @@ reviewer remain responsible for whether the source proves the claim. gh-aw
 v0.85.4 does not expose a cryptographically bindable per-`web-fetch` retrieval
 record to the custom safe job, so the prompt requires same-run retrieval but
 the safe job can enforce only the cited URL's live reachability.
+
+To bound worst-case network work, each comment may cite at most eight distinct
+authoritative URLs and the complete five-comment batch at most twenty. Safe
+outputs are configured for ten minutes, and the custom apply step has an
+explicit nine-minute process timeout because gh-aw v0.85.4 does not propagate
+the safe-output timeout field to custom safe-job YAML.
 
 A malformed batch posts nothing. Comment API calls are sequential and GitHub
 does not provide a transaction: a network/API failure after one successful
@@ -138,11 +144,9 @@ Local policy and fixture tests:
 pnpm copilot-evaluation:test
 ```
 
-The evaluation tests are not yet wired into `.github/workflows/ci.yml` because
-that workflow is being introduced independently. Until that branch lands and
-this branch is refreshed from `main`, PR validation must run
-`pnpm copilot-evaluation:test` explicitly. Adding it to CI is a required
-pre-merge integration step after coordination with the CI branch owner.
+The required `verify` job in `.github/workflows/ci.yml` runs this suite alongside
+the configurator and deterministic product-watch tests on every pull request and
+push to `main`.
 
 The separate `.github/agents/product-watch-implementation.agent.md` profile is
 manual-only and model invocation is disabled. Human invocation is the approval

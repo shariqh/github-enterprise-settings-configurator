@@ -48,27 +48,53 @@ tools:
       - github/docs
 
 steps:
-  - name: Set up Node.js
-    uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-    with:
-      node-version: 22
-  - name: Select managed product-watch fingerprints
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
-    run: >-
-      node tooling/copilot-evaluation/select-managed-issues.mjs
-      --output .github/aw/product-watch-evaluation-candidates.json
-      --safe-outputs "$GH_AW_SAFE_OUTPUTS"
-  - name: Persist exact evaluation selection
-    uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+  - name: Restore exact evaluation selection
+    uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
     with:
       name: product-watch-evaluation-selection-${{ github.run_id }}
-      path: .github/aw/product-watch-evaluation-candidates.json
-      if-no-files-found: error
-      retention-days: 1
+      path: .github/aw
+
+jobs:
+  select_product_watch:
+    name: Select managed product-watch fingerprints
+    needs: activation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+    outputs:
+      candidate_count: ${{ steps.select.outputs.candidate_count }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Select managed product-watch fingerprints
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          node tooling/copilot-evaluation/select-managed-issues.mjs
+          --output product-watch-evaluation-candidates.json
+          --github-output "$GITHUB_OUTPUT"
+      - name: Persist exact evaluation selection
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: product-watch-evaluation-selection-${{ github.run_id }}
+          path: product-watch-evaluation-candidates.json
+          if-no-files-found: error
+          retention-days: 1
+
+  agent:
+    needs: [select_product_watch]
+    if: needs.select_product_watch.outputs.candidate_count != '0'
 
 safe-outputs:
+  timeout-minutes: 10
   report-failure-as-issue: false
   report-failed-jobs: false
   report-incomplete: false
@@ -111,7 +137,7 @@ safe-outputs:
           env:
             GH_TOKEN: ${{ github.token }}
             PRODUCT_WATCH_SELECTION_PATH: ${{ runner.temp }}/product-watch-evaluation-selection/product-watch-evaluation-candidates.json
-          run: node tooling/copilot-evaluation/apply-comments.mjs
+          run: timeout 9m node tooling/copilot-evaluation/apply-comments.mjs
 
 strict: true
 ---

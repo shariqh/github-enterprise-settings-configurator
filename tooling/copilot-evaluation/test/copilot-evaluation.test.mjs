@@ -5,6 +5,8 @@ import {
   EVALUATION_MARKER_PREFIX,
   EVALUATION_WORKFLOW_MARKER,
   MAX_COMMENT_CHARS,
+  MAX_EVIDENCE_URLS_PER_BATCH,
+  MAX_EVIDENCE_URLS_PER_COMMENT,
   MAX_ISSUES_PER_RUN,
   REVIEW_LABEL,
   enforceEvidenceDefaults,
@@ -101,6 +103,20 @@ test("untrusted commenters cannot suppress evaluation", () => {
   assert.equal(selectIssuesForEvaluation([issue()], comments).length, 1);
 });
 
+test("trusted comments with multiple markers suppress no fingerprint", () => {
+  const comments = new Map([
+    [42, [{
+      user: {login: "github-actions", type: "Bot"},
+      body: [
+        evaluationMarker(fingerprint),
+        evaluationMarker("f".repeat(64)),
+        EVALUATION_WORKFLOW_MARKER,
+      ].join("\n"),
+    }]],
+  ]);
+  assert.equal(selectIssuesForEvaluation([issue()], comments).length, 1);
+});
+
 test("GraphQL batches managed issues and normalizes the Actions bot identity", async () => {
   const originalFetch = globalThis.fetch;
   let requestCount = 0;
@@ -191,7 +207,7 @@ test("unsupported and not documented evidence are forced to default-no availabil
   }
 });
 
-function evaluationBody(overrides = {}) {
+function evaluationBody(overrides = {}, markerFingerprint = fingerprint) {
   const fields = {
     "Evidence verdict": "not documented",
     "Effective default": "no",
@@ -206,10 +222,54 @@ function evaluationBody(overrides = {}) {
     ...overrides,
   };
   return [
-    evaluationMarker(fingerprint),
+    evaluationMarker(markerFingerprint),
     ...Object.entries(fields).map(([key, value]) => `**${key}:** ${value}`),
   ].join("\n");
 }
+
+test("evidence URL counts are bounded per comment and batch", () => {
+  const tooMany = Array.from(
+    {length: MAX_EVIDENCE_URLS_PER_COMMENT + 1},
+    (_, index) => `https://docs.github.com/en/example/per-comment-${index}`,
+  ).join(" ");
+  assert.throws(
+    () => validateCommentRequests(
+      [{
+        issue_number: "42",
+        body: evaluationBody({"Authoritative evidence": tooMany}),
+      }],
+      [{number: 42, candidateKey, fingerprint}],
+    ),
+    /at most 8 distinct authoritative URLs/,
+  );
+
+  const requestCount = 3;
+  const urlsPerRequest = Math.floor(MAX_EVIDENCE_URLS_PER_BATCH / requestCount) + 1;
+  const requests = [];
+  const selected = [];
+  for (let requestIndex = 0; requestIndex < requestCount; requestIndex += 1) {
+    const requestFingerprint = String(requestIndex + 31).padStart(64, "0");
+    requests.push({
+      issue_number: String(requestIndex + 1),
+      body: evaluationBody({
+        "Authoritative evidence": Array.from(
+          {length: urlsPerRequest},
+          (_, urlIndex) =>
+            `https://docs.github.com/en/example/batch-${requestIndex}-${urlIndex}`,
+        ).join(" "),
+      }, requestFingerprint),
+    });
+    selected.push({
+      number: requestIndex + 1,
+      candidateKey: String(requestIndex + 1).padStart(24, "0"),
+      fingerprint: requestFingerprint,
+    });
+  }
+  assert.throws(
+    () => validateCommentRequests(requests, selected),
+    /at most 20 distinct authoritative URLs/,
+  );
+});
 
 test("safe-output validation binds comments to allowlisted fingerprints and default-no", () => {
   const allowedIssues = [{number: 42, candidateKey, fingerprint}];
@@ -257,6 +317,25 @@ test("safe-output validation binds comments to allowlisted fingerprints and defa
     ),
     /exact evaluation marker once/,
   );
+  for (const injectedMarker of [
+    `<!-- product-watch&colon;agent-evaluation:${"f".repeat(64)} -->`,
+    `<!-- product-watch&#58;agent-evaluation:${"f".repeat(64)} -->`,
+    `<!-- product-watch&#x3a;agent-evaluation:${"f".repeat(64)} -->`,
+    `<!-- product-watch\\:agent-evaluation:${"f".repeat(64)} -->`,
+    `<!-- product-watch&amp;amp;colon;agent-evaluation:${"f".repeat(64)} -->`,
+    `<!-- product&#45;watch:agent-evaluation:${"f".repeat(64)} -->`,
+  ]) {
+    assert.throws(
+      () => validateCommentRequests(
+        [{
+          issue_number: "42",
+          body: `${evaluationBody()}\n${injectedMarker}`,
+        }],
+        allowedIssues,
+      ),
+      /exact evaluation marker once/,
+    );
+  }
   assert.throws(
     () => validateCommentRequests(
       [{
@@ -386,6 +465,16 @@ test("comment validation rejects external URLs anywhere in decoded Markdown", ()
       [{number: 42, candidateKey, fingerprint}],
     ),
     /bare HTTPS URLs/,
+  );
+  assert.throws(
+    () => validateCommentRequests(
+      [{
+        issue_number: "42",
+        body: `${evaluationBody()}\nExtra: https&amp;amp;colon;//example.com/phish`,
+      }],
+      [{number: 42, candidateKey, fingerprint}],
+    ),
+    /Comment URL is not an allowed authoritative GitHub source/,
   );
   assert.throws(
     () => validateCommentRequests(
@@ -528,10 +617,14 @@ test("workflow source permits only managed-issue comments as a write output", as
   assert.match(source, /max-ai-credits:\s*100/);
   assert.match(source, /comment-managed-product-watch:[\s\S]*issues: write/);
   assert.match(source, /node tooling\/copilot-evaluation\/apply-comments\.mjs/);
+  assert.match(source, /select_product_watch:[\s\S]*needs: activation/);
+  assert.match(source, /candidate_count: \$\{\{ steps\.select\.outputs\.candidate_count \}\}/);
   assert.match(
     source,
-    /GH_AW_SAFE_OUTPUTS: \$\{\{ steps\.set-runtime-paths\.outputs\.GH_AW_SAFE_OUTPUTS \}\}/,
+    /agent:[\s\S]*needs: \[select_product_watch\][\s\S]*candidate_count != '0'/,
   );
+  assert.match(source, /safe-outputs:\s*\n\s*timeout-minutes: 10/);
+  assert.match(source, /timeout 9m node tooling\/copilot-evaluation\/apply-comments\.mjs/);
   assert.match(source, /Persist exact evaluation selection/);
   assert.match(source, /Restore exact evaluation selection/);
   assert.match(source, /actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020/);
@@ -574,7 +667,8 @@ test("selector and apply scripts preserve the exact pre-agent selection", async 
       "utf8",
     ),
   ]);
-  assert.match(selector, /mkdir\(dirname\(options\.safeOutputs\), \{recursive: true\}\)/);
+  assert.match(selector, /candidate_count=\$\{candidates\.length\}/);
+  assert.equal(selector.includes("GH_AW_SAFE_OUTPUTS"), false);
   assert.match(apply, /PRODUCT_WATCH_SELECTION_PATH/);
   assert.match(apply, /validateLiveSelectedIssue/);
   assert.equal(apply.includes("selectIssuesForEvaluation"), false);
@@ -602,7 +696,15 @@ test("compiled lock preserves least privilege and pinned dependencies", async ()
   assert.match(lock, /comment_managed_product_watch/);
   assert.match(
     lock,
-    /name: Select managed product-watch fingerprints[\s\S]*select-managed-issues\.mjs[\s\S]*GH_AW_SAFE_OUTPUTS: \$\{\{ steps\.set-runtime-paths\.outputs\.GH_AW_SAFE_OUTPUTS \}\}/,
+    /select_product_watch:[\s\S]*candidate_count: \$\{\{ steps\.select\.outputs\.candidate_count \}\}[\s\S]*select-managed-issues\.mjs/,
+  );
+  assert.match(
+    lock,
+    /agent:[\s\S]*needs:[\s\S]*select_product_watch[\s\S]*candidate_count != '0'/,
+  );
+  assert.match(
+    lock,
+    /comment_managed_product_watch:[\s\S]*timeout 9m node tooling\/copilot-evaluation\/apply-comments\.mjs/,
   );
 
   const manifest = JSON.parse(

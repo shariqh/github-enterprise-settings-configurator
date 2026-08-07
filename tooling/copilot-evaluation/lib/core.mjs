@@ -3,6 +3,8 @@ import {parseIssueMarkers as parseProducerIssueMarkers} from "../../product-watc
 export const REVIEW_LABEL = "product-watch:review";
 export const MAX_ISSUES_PER_RUN = 5;
 export const MAX_COMMENT_CHARS = 60000;
+export const MAX_EVIDENCE_URLS_PER_COMMENT = 8;
+export const MAX_EVIDENCE_URLS_PER_BATCH = 20;
 export const EVALUATION_MARKER_PREFIX = "product-watch:agent-evaluation";
 export const EVALUATION_WORKFLOW_ID = "copilot-product-watch-evaluation";
 export const EVALUATION_WORKFLOW_MARKER =
@@ -73,8 +75,9 @@ export function evaluatedFingerprints(comments = []) {
     ) {
       continue;
     }
-    for (const match of body.matchAll(pattern)) {
-      fingerprints.add(match[1]);
+    const markers = [...body.matchAll(pattern)];
+    if (markers.length === 1) {
+      fingerprints.add(markers[0][1]);
     }
   }
 
@@ -153,9 +156,13 @@ function fieldValue(body, label) {
 }
 
 export function validateEvaluationComment(body, fingerprint) {
-  const text = String(body ?? "");
-  if (text.length > MAX_COMMENT_CHARS) {
+  const rawText = String(body ?? "");
+  if (rawText.length > MAX_COMMENT_CHARS) {
     throw new Error(`Comment body must not exceed ${MAX_COMMENT_CHARS} characters.`);
+  }
+  const text = decodeReferenceEntities(rawText);
+  if (text.length > MAX_COMMENT_CHARS) {
+    throw new Error(`Canonical comment body must not exceed ${MAX_COMMENT_CHARS} characters.`);
   }
   if (text.includes(EVALUATION_WORKFLOW_MARKER)) {
     throw new Error("Workflow identity marker is added by the safe-output job.");
@@ -225,6 +232,11 @@ export function validateEvaluationComment(body, fingerprint) {
     throw new Error("Affirmative support requires an authoritative GitHub Docs URL.");
   }
   const evidenceUrls = allUrls.filter(isAllowedAuthoritativeUrl);
+  if (evidenceUrls.length > MAX_EVIDENCE_URLS_PER_COMMENT) {
+    throw new Error(
+      `Comment may cite at most ${MAX_EVIDENCE_URLS_PER_COMMENT} distinct authoritative URLs.`,
+    );
+  }
 
   return {
     evidenceVerdict,
@@ -232,6 +244,7 @@ export function validateEvaluationComment(body, fingerprint) {
     effectiveAvailability,
     evidenceUrls,
     affirmative,
+    canonicalText: text,
   };
 }
 
@@ -244,7 +257,7 @@ export function validateCommentRequests(requests, allowedIssues) {
     allowedIssues.map((issue) => [String(issue.number), issue]),
   );
   const seen = new Set();
-  return requests.map((request) => {
+  const comments = requests.map((request) => {
     const issueNumber = String(request.issue_number ?? "");
     const issue = allowedByNumber.get(issueNumber);
     if (!issue) {
@@ -255,13 +268,20 @@ export function validateCommentRequests(requests, allowedIssues) {
     }
     seen.add(issueNumber);
     const evaluation = validateEvaluationComment(request.body, issue.fingerprint);
-    const body = neutralizeGitHubReferences(String(request.body).trim());
+    const body = neutralizeGitHubReferences(evaluation.canonicalText.trim());
     if (body.length > MAX_COMMENT_CHARS) {
       throw new Error(`Sanitized comment body must not exceed ${MAX_COMMENT_CHARS} characters.`);
     }
     const finalBody = `${body}\n\n${EVALUATION_WORKFLOW_MARKER}`;
     if (finalBody.length > MAX_COMMENT_CHARS) {
       throw new Error(`Final comment body must not exceed ${MAX_COMMENT_CHARS} characters.`);
+    }
+    const finalMarkers = [...finalBody.matchAll(EVALUATION_MARKER_PATTERN)];
+    if (
+      finalMarkers.length !== 1
+      || finalMarkers[0][0] !== evaluationMarker(issue.fingerprint)
+    ) {
+      throw new Error("Final comment must contain exactly one current evaluation marker.");
     }
     return {
       number: issue.number,
@@ -272,6 +292,13 @@ export function validateCommentRequests(requests, allowedIssues) {
       affirmative: evaluation.affirmative,
     };
   });
+  const batchUrls = new Set(comments.flatMap((comment) => comment.evidenceUrls));
+  if (batchUrls.size > MAX_EVIDENCE_URLS_PER_BATCH) {
+    throw new Error(
+      `Comment batch may cite at most ${MAX_EVIDENCE_URLS_PER_BATCH} distinct authoritative URLs.`,
+    );
+  }
+  return comments;
 }
 
 export function isAllowedAuthoritativeUrl(value) {
@@ -301,7 +328,7 @@ export function isAllowedAuthoritativeUrl(value) {
   }
 }
 
-function decodeReferenceEntities(value) {
+function decodeReferenceEntitiesOnce(value) {
   return String(value)
     .replace(/&#(x[0-9a-f]+|\d+);/gi, (entity, code) => {
       const codePoint = Number.parseInt(
@@ -326,6 +353,21 @@ function decodeReferenceEntities(value) {
     .replace(/&gt;/gi, ">")
     .replace(/&amp;/gi, "&")
     .replace(/\\([^\w\s])/g, "$1");
+}
+
+function decodeReferenceEntities(value) {
+  let current = String(value);
+  for (let pass = 0; pass < 6; pass += 1) {
+    const next = decodeReferenceEntitiesOnce(current);
+    if (next === current) {
+      return current;
+    }
+    current = next;
+  }
+  if (decodeReferenceEntitiesOnce(current) !== current) {
+    throw new Error("Comment contains excessively nested escape or entity encoding.");
+  }
+  return current;
 }
 
 function rejectRichLinkSyntax(value) {
