@@ -1,0 +1,25 @@
+# CODEOWNERS — maintenance ownership for automation surfaces.
+#
+# NOTE: This file assigns review ownership only. Do NOT enable the branch
+# ruleset option "Require review from Code Owners" together with a required
+# approval count while @shariqh is the sole maintainer — that combination
+# would make every PR un-mergeable (a maintainer cannot approve their own PR).
+# See docs/repository-protection.md.
+
+# CI, deployment, and any future workflow automation.
+/.github/workflows/           @shariqh
+
+# Dependabot, Copilot, and repository meta configuration.
+/.github/dependabot.yml        @shariqh
+/.github/CODEOWNERS            @shariqh
+/.github/copilot-instructions.md  @shariqh
+
+# Custom-agent / agentic-workflow surfaces (present or added later).
+/.github/agents/              @shariqh
+/.github/copilot/             @shariqh
+AGENTS.md                     @shariqh
+**/AGENTS.md                  @shariqh
+*.agent.md                    @shariqh
+
+# Product-watch automation maintenance surface.
+/tooling/product-watch/       @shariqh
