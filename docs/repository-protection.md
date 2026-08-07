@@ -128,10 +128,10 @@ Current inventory to keep this list in sync:
 | `actions/deploy-pages` | deploy-pages.yml |
 | `actions/upload-artifact` | product-watch.yml |
 
-> `product-watch.yml` is maintained by the daily/GHES lane and still uses
-> mutable tags in some steps at the time of writing. Confirm it is fully
-> SHA-pinned **before** turning on hard SHA enforcement, or those runs will be
-> blocked.
+> All three workflows — `ci.yml`, `deploy-pages.yml`, and `product-watch.yml`
+> (daily/GHES lane) — pin every action to a full-length commit SHA on `main`, so
+> the SHA-pinning precondition in §2b is already satisfied and enabling hard
+> enforcement will not block any current run.
 
 ### 2b. Require full-SHA pinning (repository-scoped)
 
@@ -149,11 +149,11 @@ gh api --method PUT repos/OWNER/REPO/actions/permissions \
   -F sha_pinning_required=true
 ```
 
-**Precondition:** every checked-in workflow must already pin each action to an
-immutable full-length commit SHA. All workflows in this PR do; confirm
-`product-watch.yml` (daily/GHES lane) is fully SHA-pinned **before** enabling, or
-its runs will be blocked. Once that precondition holds you can fold this into the
-single §2a PUT (it already sets `enabled` and `allowed_actions`), rather than
+**Precondition:** every checked-in workflow must pin each action to an immutable
+full-length commit SHA. This holds on `main` today — `ci.yml`,
+`deploy-pages.yml`, and `product-watch.yml` are all fully SHA-pinned — so
+enabling enforcement is safe. You can fold this into the single §2a PUT (it
+already sets `enabled` and `allowed_actions`), rather than
 issuing a second call.
 
 ---
