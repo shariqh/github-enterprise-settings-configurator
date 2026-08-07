@@ -301,11 +301,18 @@ function App() {
       dormantSelections,
       reviewed,
     })
+    const allNotices: MigrationNotice[] = [...transitionNotices, ...reconciled.notices]
+    if (
+      allNotices.length > 0
+      && JSON.stringify(reconciled.state) !== persistenceFingerprint
+    ) {
+      suppressNextSaveNotice.current = true
+    }
+
     setProfile(nextProfile)
     setSelections(reconciled.state.selections)
     setDormantSelections(reconciled.state.dormantSelections)
     setReviewed(reconciled.state.reviewed)
-    const allNotices: MigrationNotice[] = [...transitionNotices, ...reconciled.notices]
     if (allNotices.length > 0) {
       setPlanNotice({ kind: "info", message: allNotices.map((notice) => notice.message).join(" ") })
     }
