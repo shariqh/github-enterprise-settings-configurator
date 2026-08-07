@@ -1,0 +1,87 @@
+[
+  {
+    "name": "Code Quality public preview",
+    "entry": {
+      "id": "https://github.blog/changelog/2026-02-24-github-code-quality-organization-level-dashboard-in-public-preview",
+      "sourceId": "github-changelog",
+      "sourceLabel": "GitHub Changelog",
+      "sourceUrl": "https://github.blog/changelog/feed/",
+      "title": "GitHub Code Quality: Organization-level dashboard in public preview",
+      "url": "https://github.blog/changelog/2026-02-24-github-code-quality-organization-level-dashboard-in-public-preview",
+      "publishedAt": "2026-02-24T15:49:29Z",
+      "summary": "GitHub Code Quality now includes an organization-level dashboard in public preview for GitHub Enterprise Cloud. Organization owners can view quality findings for repositories where Code Quality is enabled.",
+      "deployments": ["ghec", "ghe.com", "ghes"],
+      "sourceVersion": null
+    },
+    "expected": {
+      "releaseStage": "public-preview",
+      "changeTypes": ["availability-change", "new-capability"],
+      "settingIds": ["security-configuration"],
+      "versionSpecific": false
+    }
+  },
+  {
+    "name": "Secret Protection generally available capability",
+    "entry": {
+      "id": "https://github.blog/changelog/2026-05-05-secret-scanning-with-github-mcp-server-is-now-generally-available",
+      "sourceId": "github-changelog",
+      "sourceLabel": "GitHub Changelog",
+      "sourceUrl": "https://github.blog/changelog/feed/",
+      "title": "Secret scanning with GitHub MCP Server is now generally available",
+      "url": "https://github.blog/changelog/2026-05-05-secret-scanning-with-github-mcp-server-is-now-generally-available",
+      "publishedAt": "2026-05-05T15:04:32Z",
+      "summary": "Secret scanning in the GitHub MCP Server is now generally available for GitHub Secret Protection customers on GitHub Enterprise Cloud.",
+      "deployments": ["ghec", "ghe.com", "ghes"],
+      "sourceVersion": null
+    },
+    "expected": {
+      "releaseStage": "ga",
+      "changeTypes": ["availability-change"],
+      "settingIds": ["secret-scanning"],
+      "versionSpecific": false
+    }
+  },
+  {
+    "name": "GHES 3.21 generally available",
+    "entry": {
+      "id": "https://github.blog/changelog/2026-06-11-github-enterprise-server-3-21-is-now-generally-available",
+      "sourceId": "github-changelog",
+      "sourceLabel": "GitHub Changelog",
+      "sourceUrl": "https://github.blog/changelog/feed/",
+      "title": "GitHub Enterprise Server 3.21 is now generally available",
+      "url": "https://github.blog/changelog/2026-06-11-github-enterprise-server-3-21-is-now-generally-available",
+      "publishedAt": "2026-06-11T15:46:53Z",
+      "summary": "GitHub Enterprise Server 3.21 is now generally available. The release includes code security and policy management improvements, including security configurations.",
+      "deployments": ["ghec", "ghe.com", "ghes"],
+      "sourceVersion": "3.21"
+    },
+    "expected": {
+      "releaseStage": "ga",
+      "changeTypes": ["availability-change"],
+      "settingIds": ["security-configuration"],
+      "versionSpecific": true,
+      "ghesVersion": "3.21"
+    }
+  },
+  {
+    "name": "Security API field deprecation",
+    "entry": {
+      "id": "https://github.blog/changelog/2026-03-24-upcoming-deprecation-of-security-related-organization-api-fields",
+      "sourceId": "github-changelog",
+      "sourceLabel": "GitHub Changelog",
+      "sourceUrl": "https://github.blog/changelog/feed/",
+      "title": "Upcoming deprecation of security-related organization API fields",
+      "url": "https://github.blog/changelog/2026-03-24-upcoming-deprecation-of-security-related-organization-api-fields",
+      "publishedAt": "2026-03-24T14:11:01Z",
+      "summary": "The REST API will remove advanced_security_enabled_for_new_repositories, secret_scanning_enabled_for_new_repositories, and secret_scanning_push_protection_enabled_for_new_repositories response fields. Use GitHub Code Security configurations instead.",
+      "deployments": ["ghec", "ghe.com", "ghes"],
+      "sourceVersion": null
+    },
+    "expected": {
+      "releaseStage": "deprecation",
+      "changeTypes": ["deprecation", "api-change"],
+      "settingIds": ["secret-scanning", "security-configuration"],
+      "versionSpecific": false
+    }
+  }
+]

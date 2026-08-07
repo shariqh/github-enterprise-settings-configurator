@@ -48,6 +48,10 @@ pnpm build
 
 For GitHub Pages, Vite uses the `/github-enterprise-settings-configurator/` base path in GitHub Actions and `/` for local development.
 
+## GitHub product watch
+
+The scheduled [GitHub product watch](tooling/product-watch/README.md) monitors versioned GitHub Changelog, Docs/API, and GHES release-note sources. It deterministically opens evidence-rich human-review issues and never edits catalog or recommendation code. Manual workflow runs default to dry-run mode.
+
 ## Non-goals
 
 - No authentication, backend, tenant connection, observed-state scan, or direct apply.
