@@ -2,6 +2,14 @@ import { createHash } from "node:crypto";
 
 const DEFAULT_DATE = "1970-01-01T00:00:00.000Z";
 const MAX_EVIDENCE_CHARS = 12000;
+const REPLACEMENT_CHARACTER = "\uFFFD";
+const DISPOSITIONS = [
+  "Update required",
+  "No impact",
+  "Already covered",
+  "Defer until GA",
+  "Needs product SME",
+];
 
 export function normalizeWhitespace(value) {
   return String(value ?? "")
@@ -10,11 +18,20 @@ export function normalizeWhitespace(value) {
     .trim();
 }
 
+function decodeNumericEntity(code, radix) {
+  const codePoint = Number.parseInt(code, radix);
+  const isScalarValue = Number.isInteger(codePoint)
+    && codePoint >= 0
+    && codePoint <= 0x10FFFF
+    && (codePoint < 0xD800 || codePoint > 0xDFFF);
+  return isScalarValue ? String.fromCodePoint(codePoint) : REPLACEMENT_CHARACTER;
+}
+
 export function decodeEntities(value) {
   return String(value ?? "")
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(Number.parseInt(code, 16)))
+    .replace(/&#(\d+);/g, (_, code) => decodeNumericEntity(code, 10))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => decodeNumericEntity(code, 16))
     .replace(/&amp;/gi, "&")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
@@ -454,8 +471,27 @@ function list(values, empty = "None identified") {
   return values.length > 0 ? values.join(", ") : empty;
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function readCheckedDispositions(existingBody, notesMarker) {
+  const start = existingBody.indexOf("## Human disposition");
+  const end = existingBody.indexOf(notesMarker, start);
+  if (start < 0 || end < 0) {
+    return new Set();
+  }
+  const section = existingBody.slice(start, end);
+  return new Set(
+    DISPOSITIONS.filter((disposition) =>
+      new RegExp(`^- \\[[xX]\\] ${escapeRegExp(disposition)}\\s*$`, "m").test(section)
+    ),
+  );
+}
+
 export function renderIssueBody(candidate, existingBody = "") {
   const notesMarker = "<!-- product-watch:human-notes -->";
+  const checkedDispositions = readCheckedDispositions(existingBody, notesMarker);
   const existingNotesIndex = existingBody.indexOf(notesMarker);
   const existingNotes = existingNotesIndex >= 0
     ? existingBody
@@ -515,11 +551,9 @@ ${candidate.matchedRules.map((rule) => `- \`${rule}\``).join("\n") || "- No expl
 
 Select one disposition and record supporting notes:
 
-- [ ] Update required
-- [ ] No impact
-- [ ] Already covered
-- [ ] Defer until GA
-- [ ] Needs product SME
+${DISPOSITIONS.map(
+    (disposition) => `- [${checkedDispositions.has(disposition) ? "x" : " "}] ${disposition}`,
+  ).join("\n")}
 
 Review whether this changes applicability, recommendation logic, choices, API or automation mapping, scoring or effort metadata, or documentation only. Close the issue once disposition and any follow-up issue or pull request are linked.
 

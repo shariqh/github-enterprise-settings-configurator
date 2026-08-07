@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildCandidates,
   classifyEntry,
+  decodeEntities,
   ingestSourceContent,
   parseIssueMarkers,
   planIssueActions,
@@ -67,6 +68,13 @@ test("normalization produces a stable fingerprint", () => {
   );
 });
 
+test("numeric entity decoding rejects invalid Unicode scalar values safely", () => {
+  assert.equal(
+    decodeEntities("valid &#65; invalid &#9999999; &#xFFFFFFFF; &#xD800;"),
+    "valid A invalid \uFFFD \uFFFD \uFFFD",
+  );
+});
+
 test("source adapters parse RSS and HTML sections deterministically", () => {
   const entries = config.sources.flatMap((source) =>
     ingestSourceContent(source, fixtureSources[source.id])
@@ -114,12 +122,18 @@ test("issue planning creates, skips, and updates without duplicates", () => {
   });
 });
 
-test("managed issue updates preserve human notes", () => {
+test("managed issue updates preserve checked disposition and human notes", () => {
   const candidate = classifyEntry(fixtureEntries[1].entry, config);
-  const existing = `${renderIssueBody(candidate)}\nReviewer approved deferring this until Q4.`;
+  const existing = renderIssueBody(candidate)
+    .replace("- [ ] Defer until GA", "- [x] Defer until GA")
+    .replace(
+      "_Add reviewer notes below this line; product-watch updates preserve this section._",
+      "Reviewer approved deferring this until Q4.",
+    );
   const updated = renderIssueBody({...candidate, fingerprint: "b".repeat(64)}, existing);
   assert.match(updated, /Reviewer approved deferring this until Q4/);
-  assert.match(updated, /Update required/);
+  assert.match(updated, /^- \[x\] Defer until GA$/m);
+  assert.match(updated, /^- \[ \] Update required$/m);
   assert.match(updated, /Source evidence/);
 });
 
@@ -162,6 +176,28 @@ test("partial source failures do not call GitHub or advance state", async () => 
   assert.equal(report.errors[0].sourceId, "github-docs-rest-api-versions");
 });
 
+test("malformed numeric entities do not fail end-to-end ingestion", async () => {
+  const malformedSources = {
+    ...fixtureSources,
+    "github-changelog": fixtureSources["github-changelog"].replace(
+      "GitHub Code Quality",
+      "GitHub Code Quality &#9999999; &#xFFFFFFFF; &#xD800;",
+    ),
+  };
+  const report = await runProductWatch({
+    config,
+    repository: "owner/repo",
+    token: "",
+    dryRun: true,
+    fixtureSources: malformedSources,
+    now: () => new Date("2026-08-07T12:00:00Z"),
+  });
+  assert.equal(report.status, "dry-run");
+  assert.equal(report.errors.length, 0);
+  assert.ok(report.sources.every((source) => source.status === "ok"));
+  assert.ok(report.candidates.some((candidate) => candidate.title.includes("\uFFFD")));
+});
+
 test("fixture dry run produces issue actions without mutations", async () => {
   const report = await runProductWatch({
     config,
@@ -177,7 +213,7 @@ test("fixture dry run produces issue actions without mutations", async () => {
   assert.ok(report.candidateCount >= 4);
 });
 
-test("two successful runs create state once and deduplicate review issues", async () => {
+test("successful runs create, dedupe, and preserve reviewer state on update", async () => {
   let issueNumber = 100;
   const issues = [];
   const githubClient = {
@@ -238,4 +274,35 @@ test("two successful runs create state once and deduplicate review issues", asyn
     issues.filter((issue) => issue.labels.includes(config.state.reviewLabel)).length,
     first.candidateCount,
   );
+
+  const reviewIssue = issues.find((issue) =>
+    issue.labels.includes(config.state.reviewLabel)
+    && issue.title.includes("Code Quality")
+  );
+  reviewIssue.body = reviewIssue.body
+    .replace("- [ ] Defer until GA", "- [x] Defer until GA")
+    .replace(
+      "_Add reviewer notes below this line; product-watch updates preserve this section._",
+      "Wait for the preview to reach GA.",
+    );
+  const changedSources = {
+    ...fixtureSources,
+    "github-changelog": fixtureSources["github-changelog"].replace(
+      "Code Quality can be enabled through security configurations.",
+      "Code Quality can be enabled through security configurations. Additional guidance applies.",
+    ),
+  };
+  const third = await runProductWatch({
+    config,
+    repository: "owner/repo",
+    token: "not-used",
+    dryRun: false,
+    fixtureSources: changedSources,
+    githubClient,
+    now: () => new Date("2026-08-09T12:00:00Z"),
+  });
+  assert.equal(third.status, "success");
+  assert.ok(third.actions.some((action) => action.type === "update"));
+  assert.match(reviewIssue.body, /^- \[x\] Defer until GA$/m);
+  assert.match(reviewIssue.body, /Wait for the preview to reach GA/);
 });
