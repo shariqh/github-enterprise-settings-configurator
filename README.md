@@ -32,6 +32,11 @@ The UI labels sources according to their appropriate use:
 
 Worked examples include [safe-settings](https://github.com/github-community-projects/safe-settings), [ruleset-recipes](https://github.com/github/ruleset-recipes), and the third-party [Copilot adoption guide](https://samqbush.github.io/copilot-adoption/).
 
+The current product-research baseline is recorded in the
+[2026 catalog audit](docs/catalog-audit-2026.md). Global freshness metadata is
+versioned in `src/catalogMetadata.ts`; it is not evidence that a feature is
+available on a deployment unless the audit records an explicit source.
+
 ## Local development
 
 ```bash
