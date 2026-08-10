@@ -100,13 +100,27 @@ export function Review({
       </section>
 
       <section className="export-section">
-        <div>
+        <header>
           <h2>Export the desired state</h2>
-          <p>JSON supports future adapters. Markdown supports review and decision records. No direct tenant changes are made.</p>
-        </div>
-        <div>
-          <button className="button button--secondary" onClick={onDownloadMarkdown} type="button">Download Markdown</button>
-          <button className="button button--primary" onClick={onDownloadJson} type="button">Download JSON</button>
+          <p>Choose the artifact for the next job. Both describe this plan only; neither validates or applies tenant settings.</p>
+        </header>
+        <div className="export-options">
+          <article className="export-option">
+            <div>
+              <strong>Review handoff</strong>
+              <span>Markdown · for people</span>
+            </div>
+            <p>An ordered checklist with desired values, owners, prerequisites, caveats, exclusions, and evidence links.</p>
+            <button className="button button--secondary" onClick={onDownloadMarkdown} type="button">Download review handoff (.md)</button>
+          </article>
+          <article className="export-option">
+            <div>
+              <strong>Desired-state contract</strong>
+              <span>JSON · for tools and re-entry</span>
+            </div>
+            <p>A versioned contract with stable IDs, planning context, review state, and exclusions. Import it back here or adapt it downstream.</p>
+            <button className="button button--primary" onClick={onDownloadJson} type="button">Download desired-state contract (.json)</button>
+          </article>
         </div>
       </section>
     </section>

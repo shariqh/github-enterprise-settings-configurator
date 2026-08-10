@@ -526,8 +526,14 @@ function App() {
     )
   const downloadMarkdown = () =>
     download(
-      "github-enterprise-desired-state.md",
-      buildMarkdown(plan, settings),
+      "github-enterprise-review-handoff.md",
+      buildMarkdown(
+        plan,
+        settings,
+        settings
+          .filter((item) => isReviewed(item, reviewed))
+          .map((item) => item.setting.id),
+      ),
       "text/markdown",
     )
 

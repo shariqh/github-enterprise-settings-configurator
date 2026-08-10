@@ -11,7 +11,8 @@ Published at
 - Base plan, repository visibility, licensed products, and planning scope are modeled independently; GitHub Enterprise does not imply Copilot or paid security products.
 - Typed decisions span identity, governance, Secret Protection, Code Security, Code Quality, Actions, audit, Copilot governance, and Copilot cost controls.
 - Progressive disclosure for rationale, tradeoffs, prerequisites, consequences, scope, role, apply method, and source links.
-- JSON and Markdown exports of the desired state.
+- A Markdown review handoff with an ordered implementation checklist, owners, prerequisites, caveats, exclusions, and evidence links.
+- A versioned JSON desired-state contract with stable IDs, profile/capability context, review state, and additive schema-v2 fields for import or authorized downstream adapters.
 
 ## Relative posture and complexity model
 
@@ -97,6 +98,8 @@ source of truth for applying or recovering those controls.
 - No recommended promotional AI-credit amounts.
 - No claim that undocumented GHE.com product availability matches GitHub.com; unsupported or ambiguous combinations remain explicit.
 
-## Roadmap and export adapters
+## Export artifacts and adapters
 
-The JSON format is intentionally a desired-state contract. A future adapter may turn it into review tickets, policy-as-code drafts, or Terraform-provider inputs after an authorized user validates each setting and the target GitHub capability. Direct application, identity validation, tenant discovery, and billing-resource validation remain explicitly out of scope for this static MVP.
+Choose Markdown when people need to review, assign, and work the plan. Choose JSON when a tool needs the versioned desired-state contract or when the plan should be imported back into the configurator. JSON schema v2 keeps the import-critical `profile`, `intent`, `priorities`, `settings[].id/selected`, and `reviewedSettingIds` fields stable; richer context is additive.
+
+A future adapter may turn the JSON contract into review tickets, policy-as-code drafts, or Terraform-provider inputs after an authorized user validates each setting and the target GitHub capability. Direct application, identity validation, tenant discovery, and billing-resource validation remain explicitly out of scope for this static MVP.
