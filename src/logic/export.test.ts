@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { buildMarkdown, exportObject } from "./export"
+import { EXPORT_SCHEMA_NAME, buildMarkdown, exportObject } from "./export"
 import { defaultIntent } from "./intent"
+import { parseImportedPlan } from "./persistence"
 import { defaultProfile } from "./profile"
+import { getRecommendedSettings } from "./recommendations"
 import type { Plan, RecommendedSetting, Setting } from "../types"
 
 const baseSetting = (overrides: Partial<Setting> = {}): Setting => ({
@@ -59,12 +61,18 @@ describe("exportObject", () => {
     const result = exportObject(plan, [], [])
 
     expect(result.schemaVersion).toBe(2)
+    expect(result.schema).toEqual(expect.objectContaining({
+      name: EXPORT_SCHEMA_NAME,
+      version: 2,
+    }))
     expect(result.settings).toEqual([])
     expect(result.domainProfiles).toEqual([])
     expect(result.reviewedSettingIds).toEqual([])
+    expect(result.summary.applicableDecisionCount).toBe(0)
+    expect(result.summary.excludedDecisionCount).toBeGreaterThan(0)
   })
 
-  it("uses schema version 2 and serializes the new profile/license/planning scope shape", () => {
+  it("uses additive schema version 2 and serializes profile, capability, and planning context", () => {
     const plan = basePlan()
     const result = exportObject(plan, [], [])
 
@@ -73,15 +81,44 @@ describe("exportObject", () => {
     expect(result.profile.basePlan).toBe(plan.profile.basePlan)
     expect(result.profile.licensedProducts).toEqual(plan.profile.licensedProducts)
     expect(result.profile.planningScope).toEqual(plan.profile.planningScope)
+    expect(result.capabilityContext.resolvedCapabilities).toContain("enterprise-account")
+    expect(result.planningContext.priorities[0]).toEqual(expect.objectContaining({
+      id: "secure-ghec",
+      label: "Secure GHEC baseline",
+    }))
+    expect(result.limitations).toContain("Does not inspect, validate, or change a GitHub tenant.")
   })
 
-  it("serializes only applicable settings and their domain profiles", () => {
+  it("serializes ordered, actionable fields for applicable settings", () => {
     const included = baseSetting({ id: "included", domain: "Code security" })
     const settings = [recommendedFor(included, "strong")]
     const result = exportObject(basePlan(), settings, [])
 
     expect(result.settings).toHaveLength(1)
-    expect(result.settings[0].id).toBe("included")
+    expect(result.settings[0]).toEqual(expect.objectContaining({
+      order: 1,
+      id: "included",
+      selected: "strong",
+      reviewStatus: "not-reviewed",
+      rationale: "Rationale",
+      prerequisites: "Prerequisites",
+      consequences: "Consequences",
+      role: "Enterprise owner",
+      applyMethod: "Manual",
+    }))
+    expect(result.settings[0].desiredState).toEqual({
+      id: "strong",
+      label: "Strong",
+      description: "Strong",
+    })
+    expect(result.settings[0].sources[0].tier).toBe("GitHub Docs · mechanics")
+    expect(result.implementationSteps[0]).toEqual({
+      order: 1,
+      decisionId: "included",
+      domain: "Code security",
+      desiredStateId: "strong",
+      reviewStatus: "not-reviewed",
+    })
     expect(result.domainProfiles).toHaveLength(1)
     expect(result.domainProfiles[0].domain).toBe("Code security")
   })
@@ -98,13 +135,43 @@ describe("exportObject", () => {
     const result = exportObject(basePlan(), [], [])
     expect(result).not.toHaveProperty("dormantSelections")
   })
+
+  it("summarizes excluded catalog decisions with structured default-no reasoning", () => {
+    const result = exportObject(basePlan(), getRecommendedSettings(basePlan()), [])
+    const excluded = result.excludedDecisions.find((item) => item.id === "copilot-license-topology")
+
+    expect(result.summary.catalogDecisionCount).toBe(result.settings.length + result.excludedDecisions.length)
+    expect(excluded?.applicability.status).toBe("excluded")
+    expect(excluded?.applicability.reason).toContain("requires at least one of")
+    expect(result.caveats).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "default-no-exclusions" }),
+      expect.objectContaining({ code: "unreviewed-decisions" }),
+    ]))
+  })
+
+  it("remains importable through the existing schema-v2 path", () => {
+    const plan = basePlan()
+    const settings = getRecommendedSettings(plan)
+    const exported = exportObject(plan, settings, [settings[0].setting.id])
+    const imported = parseImportedPlan(JSON.stringify(exported))
+
+    expect(imported.ok).toBe(true)
+    if (!imported.ok) return
+    expect(imported.value.migratedFromVersion).toBeNull()
+    expect(imported.value.state.profile).toEqual(plan.profile)
+    expect(imported.value.state.intent).toEqual(plan.intent)
+    expect(imported.value.state.priorities).toEqual(plan.priorities)
+    expect(imported.value.importedSettingCount).toBe(settings.length)
+  })
 })
 
 describe("buildMarkdown", () => {
   it("stays finite/well-formed for zero settings", () => {
     const markdown = buildMarkdown(basePlan(), [])
-    expect(markdown).toContain("# GitHub Enterprise Settings Configurator")
-    expect(markdown).toContain("## Desired settings")
+    expect(markdown).toContain("# GitHub Enterprise desired-state handoff")
+    expect(markdown).toContain("## Purpose and how to use this document")
+    expect(markdown).toContain("## Implementation checklist")
+    expect(markdown).toContain("## Excluded / not applicable catalog decisions")
     expect(markdown).toContain("## Boundaries")
   })
 
@@ -129,21 +196,50 @@ describe("buildMarkdown", () => {
     expect(markdown).toContain("- Audit log: Included")
   })
 
-  it("only lists applicable settings and includes Code quality domain output", () => {
+  it("turns applicable settings into a domain-ordered implementation checklist", () => {
     const included = baseSetting({ id: "included", title: "Included setting", domain: "Code security" })
     const codeQuality = baseSetting({ id: "codeql-config", title: "CodeQL configuration", domain: "Code quality" })
     const settings = [recommendedFor(included, "strong"), recommendedFor(codeQuality, "strong")]
-    const markdown = buildMarkdown(basePlan(), settings)
+    const markdown = buildMarkdown(basePlan(), settings, ["included"])
 
-    expect(markdown).toContain("### Included setting")
-    expect(markdown).toContain("### CodeQL configuration")
+    expect(markdown).toContain("- [ ] **1. Included setting — Strong**")
+    expect(markdown).toContain("Decision ID: `included`; review state: reviewed")
+    expect(markdown).toContain("- Why: Rationale")
+    expect(markdown).toContain("- Scope / owner: Enterprise / Enterprise owner")
+    expect(markdown).toContain("- Apply method: Manual")
+    expect(markdown).toContain("- Prerequisites: Prerequisites")
+    expect(markdown).toContain("- Consequences: Consequences")
+    expect(markdown).toContain("Authoritative product sources: [GitHub Docs]")
+    expect(markdown).toContain("- [ ] **2. CodeQL configuration — Strong**")
     expect(markdown).toContain("**Code quality**")
+  })
+
+  it("surfaces unresolved review state and excluded decisions instead of silently omitting them", () => {
+    const plan = basePlan()
+    const settings = getRecommendedSettings(plan)
+    const markdown = buildMarkdown(plan, settings)
+
+    expect(markdown).toContain("**unreviewed-decisions:**")
+    expect(markdown).toContain("**default-no-exclusions:**")
+    expect(markdown).toContain("### Copilot governance")
+    expect(markdown).toContain("`copilot-license-topology`")
+    expect(markdown).toContain("Excluded by catalog availability")
+  })
+
+  it("does not describe an unreviewed explicit selection as generated", () => {
+    const included = baseSetting({ id: "included" })
+    const plan = { ...basePlan(), selections: { included: "light" } }
+    const markdown = buildMarkdown(plan, [recommendedFor(included, "light", "Override")])
+
+    expect(markdown).toContain("Unreviewed editable decisions: 1")
+    expect(markdown).toContain("values may be generated recommendations or explicit selections")
+    expect(markdown).not.toContain("Unreviewed generated decisions")
   })
 
   it("preserves the desired-state boundaries language", () => {
     const markdown = buildMarkdown(basePlan(), [])
     expect(markdown).toContain("Static desired state only; no tenant observation, direct apply, or backend connection.")
-    expect(markdown).toContain("Settings that do not apply to this profile are omitted from the plan, not represented as gaps or divergence.")
+    expect(markdown).toContain("Excluded decisions reflect catalog capability filters and default-no planning, not live tenant validation.")
     expect(markdown).toContain("not a universal security score, breach prediction, or cross-customer comparison.")
   })
 })

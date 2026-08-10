@@ -37,8 +37,7 @@
 
 .topbar__actions,
 .heading-actions,
-.decision-actions,
-.export-section > div:last-child {
+.decision-actions {
   align-items: center;
   display: flex;
   gap: 8px;
@@ -1188,7 +1187,7 @@
 }
 
 .review-section header p,
-.export-section p {
+.export-section > header p {
   color: var(--cp-text-muted);
   font-size: 0.76rem;
   line-height: 1.45;
@@ -1296,19 +1295,57 @@
 }
 
 .export-section {
-  align-items: center;
   background: var(--cp-surface-soft);
   border-bottom: 1px solid var(--cp-border);
   border-top: 1px solid var(--cp-border);
-  display: flex;
-  gap: 24px;
-  justify-content: space-between;
+  display: grid;
+  gap: 18px;
   margin-top: 38px;
   padding: 20px;
 }
 
 .export-section h2 {
   margin-bottom: 5px;
+}
+
+.export-options {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.export-option {
+  align-items: start;
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.export-option > div {
+  display: grid;
+  gap: 2px;
+}
+
+.export-option strong {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.export-option span,
+.export-option p {
+  color: var(--cp-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.export-option p {
+  margin: 0;
+}
+
+.export-option .button {
+  justify-self: start;
 }
 
 .site-footer {
@@ -1411,10 +1448,13 @@
   }
 
   .content-heading,
-  .review-section > header,
-  .export-section {
+  .review-section > header {
     align-items: start;
     flex-direction: column;
+  }
+
+  .export-options {
+    grid-template-columns: 1fr;
   }
 
   .heading-actions {
