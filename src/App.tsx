@@ -10,7 +10,13 @@ import {
   PlanSignature,
 } from "./components/VisualPlanning"
 import { deployments, resolveProfile } from "./logic/capabilities"
-import { buildMarkdown, download, exportObject } from "./logic/export"
+import {
+  buildMarkdown,
+  download,
+  exportFilename,
+  exportObject,
+} from "./logic/export"
+import type { ExportFormat } from "./logic/export"
 import {
   clearCachedPlan,
   parseImportedPlan,
@@ -24,6 +30,7 @@ import {
   transitionProfile,
 } from "./logic/profile"
 import { getRecommendedSettings } from "./logic/recommendations"
+import { buildPlanReviewAnalysis } from "./logic/readiness"
 import type {
   AccountModel,
   AuthenticationMethod,
@@ -177,6 +184,7 @@ function App() {
   const [domainView, setDomainView] = useState<DomainView>("guided")
   const [pathMenuOpen, setPathMenuOpen] = useState(false)
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false)
+  const [pendingDraftExport, setPendingDraftExport] = useState<ExportFormat | null>(null)
   const [planNotice, setPlanNotice] = useState<PlanNotice | null>(() => {
     if (!cachedPlan.ok) return { kind: "error", message: cachedPlan.error }
     if (cachedPlan.value) {
@@ -221,6 +229,10 @@ function App() {
     }))
     .filter((group) => group.items.length > 0)
   const reviewedCount = settings.filter((item) => isReviewed(item, reviewed)).length
+  const reviewedSettingIds = settings
+    .filter((item) => isReviewed(item, reviewed))
+    .map((item) => item.setting.id)
+  const reviewAnalysis = buildPlanReviewAnalysis(plan, settings, reviewedSettingIds)
   const activeSectionLabel = activeSection === "profile"
     ? "Target profile"
     : activeSection === "review"
@@ -373,6 +385,7 @@ function App() {
       openDomain(section)
       return
     }
+    if (section !== "review") setPendingDraftExport(null)
     setActiveSection(section)
   }
 
@@ -457,6 +470,7 @@ function App() {
     setDomainView("guided")
     setPathMenuOpen(false)
     setActionsMenuOpen(false)
+    setPendingDraftExport(null)
     if (importInputRef.current) importInputRef.current.value = ""
     setPlanNotice(cleared.ok
       ? { kind: "success", message: "Plan reset to defaults and the local draft was cleared." }
@@ -497,6 +511,7 @@ function App() {
     setActiveSection("profile")
     setActiveSettingId(null)
     setDomainView("guided")
+    setPendingDraftExport(null)
 
     const importedSettingCount = Object.keys(importedState.selections).length
     const migrationSummary = [...notices, ...reconciled.notices]
@@ -508,34 +523,36 @@ function App() {
       : { kind: "error", message: `${importMessage} ${saved.error}`.trim() })
   }
 
-  const downloadJson = () =>
-    download(
-      "github-enterprise-desired-state.json",
-      JSON.stringify(
-        exportObject(
-          plan,
-          settings,
-          settings
-            .filter((item) => isReviewed(item, reviewed))
-            .map((item) => item.setting.id),
-        ),
-        null,
-        2,
-      ),
-      "application/json",
-    )
-  const downloadMarkdown = () =>
-    download(
-      "github-enterprise-review-handoff.md",
-      buildMarkdown(
-        plan,
-        settings,
-        settings
-          .filter((item) => isReviewed(item, reviewed))
-          .map((item) => item.setting.id),
-      ),
-      "text/markdown",
-    )
+  const downloadExport = (format: ExportFormat) => {
+    const artifactStatus = reviewAnalysis.readiness.artifactStatus
+    if (format === "json") {
+      download(
+        exportFilename(format, artifactStatus),
+        JSON.stringify(exportObject(plan, settings, reviewedSettingIds), null, 2),
+        "application/json",
+      )
+    } else {
+      download(
+        exportFilename(format, artifactStatus),
+        buildMarkdown(plan, settings, reviewedSettingIds),
+        "text/markdown",
+      )
+    }
+    setPendingDraftExport(null)
+  }
+
+  const requestExport = (format: ExportFormat) => {
+    if (reviewAnalysis.readiness.isReady) {
+      downloadExport(format)
+      return
+    }
+    setPendingDraftExport(format)
+  }
+
+  const confirmDraftExport = () => {
+    if (!pendingDraftExport) return
+    downloadExport(pendingDraftExport)
+  }
 
   return (
     <div className="app-shell">
@@ -747,12 +764,13 @@ function App() {
 
           {activeSection === "review" && (
             <Review
-              currentState={profile.currentState}
+              analysis={reviewAnalysis}
               intent={intent}
-              onDownloadJson={downloadJson}
-              onDownloadMarkdown={downloadMarkdown}
+              onCancelDraftExport={() => setPendingDraftExport(null)}
+              onConfirmDraftExport={confirmDraftExport}
               onOpenDomain={openDomain}
-              reviewedCount={reviewedCount}
+              onRequestExport={requestExport}
+              pendingDraftExport={pendingDraftExport}
               settings={settings}
             />
           )}
@@ -848,6 +866,15 @@ function ProfileEditor({
           <p>The configurator builds a recommended path from this desired target. It does not inspect a live tenant.</p>
         </div>
       </header>
+
+      <aside className="facilitator-note" aria-labelledby="pilot-guidance-heading">
+        <strong id="pilot-guidance-heading">How to pilot this</strong>
+        <p>
+          Run a facilitated desired-state workshop with the enterprise owner and relevant identity, security, Actions,
+          and Copilot stakeholders. Do not enter secrets or sensitive customer data; leave unknowns unknown. This tool
+          does not inspect or apply tenant settings, or assess compliance.
+        </p>
+      </aside>
 
       <div className="profile-fields">
         <ProfileSelect
