@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { EXPORT_SCHEMA_NAME, buildMarkdown, exportObject } from "./export"
+import { EXPORT_SCHEMA_NAME, buildMarkdown, exportFilename, exportObject } from "./export"
 import { defaultIntent } from "./intent"
 import { parseImportedPlan } from "./persistence"
 import { defaultProfile } from "./profile"
@@ -70,6 +70,13 @@ describe("exportObject", () => {
     expect(result.reviewedSettingIds).toEqual([])
     expect(result.summary.applicableDecisionCount).toBe(0)
     expect(result.summary.excludedDecisionCount).toBeGreaterThan(0)
+    expect(result.readiness).toEqual(expect.objectContaining({
+      status: "ready-for-handoff",
+      artifactStatus: "final",
+      applicableEditableDecisionCount: 0,
+      reviewedDecisionCount: 0,
+      remainingDecisionCount: 0,
+    }))
   })
 
   it("uses additive schema version 2 and serializes profile, capability, and planning context", () => {
@@ -87,6 +94,7 @@ describe("exportObject", () => {
       label: "Secure GHEC baseline",
     }))
     expect(result.limitations).toContain("Does not inspect, validate, or change a GitHub tenant.")
+    expect(result.artifactStatus).toBe("final")
   })
 
   it("serializes ordered, actionable fields for applicable settings", () => {
@@ -163,12 +171,35 @@ describe("exportObject", () => {
     expect(imported.value.state.priorities).toEqual(plan.priorities)
     expect(imported.value.importedSettingCount).toBe(settings.length)
   })
+
+  it("adds draft readiness metadata without changing schema version or import-critical fields", () => {
+    const plan = basePlan()
+    const settings = getRecommendedSettings(plan)
+    const result = exportObject(plan, settings, [])
+
+    expect(result.schemaVersion).toBe(2)
+    expect(result.artifactType).toBe("machine-readable desired-state contract")
+    expect(result.artifactStatus).toBe("draft")
+    expect(result.readiness).toEqual(expect.objectContaining({
+      status: "draft",
+      artifactStatus: "draft",
+      applicableEditableDecisionCount: expect.any(Number),
+      reviewedDecisionCount: 0,
+      remainingDecisionCount: expect.any(Number),
+    }))
+    expect(result.summary.remainingDecisionCount).toBe(result.readiness.remainingDecisionCount)
+    expect(result.profile).toEqual(plan.profile)
+    expect(result.intent).toEqual(plan.intent)
+    expect(result.priorities).toEqual(plan.priorities)
+    expect(result.settings.every((item) => typeof item.id === "string" && typeof item.selected === "string")).toBe(true)
+    expect(parseImportedPlan(JSON.stringify(result)).ok).toBe(true)
+  })
 })
 
 describe("buildMarkdown", () => {
   it("stays finite/well-formed for zero settings", () => {
     const markdown = buildMarkdown(basePlan(), [])
-    expect(markdown).toContain("# GitHub Enterprise desired-state handoff")
+    expect(markdown).toContain("# GitHub Enterprise final desired-state handoff")
     expect(markdown).toContain("## Purpose and how to use this document")
     expect(markdown).toContain("## Implementation checklist")
     expect(markdown).toContain("## Excluded / not applicable catalog decisions")
@@ -241,5 +272,26 @@ describe("buildMarkdown", () => {
     expect(markdown).toContain("Static desired state only; no tenant observation, direct apply, or backend connection.")
     expect(markdown).toContain("Excluded decisions reflect catalog capability filters and default-no planning, not live tenant validation.")
     expect(markdown).toContain("not a universal security score, breach prediction, or cross-customer comparison.")
+  })
+
+  it("uses draft/final filenames and content based on readiness", () => {
+    const plan = basePlan()
+    const settings = getRecommendedSettings(plan)
+    const reviewedIds = settings
+      .filter((item) => item.setting.editable !== false)
+      .map((item) => item.setting.id)
+    const draftMarkdown = buildMarkdown(plan, settings)
+    const finalMarkdown = buildMarkdown(plan, settings, reviewedIds)
+
+    expect(exportFilename("markdown", "draft")).toBe("github-enterprise-draft-review-handoff.md")
+    expect(exportFilename("json", "draft")).toBe("github-enterprise-draft-desired-state.json")
+    expect(exportFilename("markdown", "final")).toBe("github-enterprise-final-review-handoff.md")
+    expect(exportFilename("json", "final")).toBe("github-enterprise-final-desired-state.json")
+    expect(draftMarkdown).toContain("# GitHub Enterprise draft desired-state handoff")
+    expect(draftMarkdown).toContain("- Readiness status: Draft")
+    expect(draftMarkdown).toContain("- Artifact status: draft")
+    expect(finalMarkdown).toContain("# GitHub Enterprise final desired-state handoff")
+    expect(finalMarkdown).toContain("- Readiness status: Ready for handoff")
+    expect(finalMarkdown).toContain("- Artifact status: final")
   })
 })

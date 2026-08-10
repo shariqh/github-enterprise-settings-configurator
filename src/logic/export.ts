@@ -2,13 +2,17 @@ import { catalog, priorityOptions } from "../catalog"
 import { catalogMetadata } from "../catalogMetadata"
 import { resolveProfile } from "./capabilities"
 import { buildPlanSignature, intentAxes, intentAxisDefinitions, intentLabel } from "./intent"
+import {
+  buildPlanReviewAnalysis,
+  getDecisionReviewStatus,
+  getRequirementEvaluation,
+} from "./readiness"
+import type { ExcludedDecision } from "./readiness"
 import { buildDomainProfiles } from "./scoring"
 import type {
   AccountModel,
   AuthenticationMethod,
   BasePlan,
-  CapabilityId,
-  CapabilityRequirement,
   CopilotPlan,
   CurrentState,
   Deployment,
@@ -24,6 +28,7 @@ import type {
 
 export const EXPORT_SCHEMA_NAME = "github-enterprise-settings-configurator.desired-state"
 export const EXPORT_SCHEMA_VERSION = 2
+export type ExportFormat = "json" | "markdown"
 
 const generatedAt = () => new Date().toISOString()
 
@@ -100,142 +105,11 @@ const licensedProductLabels: Record<LicensedProductId, string> = {
   codeQuality: "Code Quality",
 }
 
-interface RequirementEvaluation {
-  allOf: CapabilityId[]
-  anyOf: CapabilityId[]
-  noneOf: CapabilityId[]
-  missingAllOf: CapabilityId[]
-  anyOfSatisfied: boolean | null
-  presentNoneOf: CapabilityId[]
-}
-
-interface ExcludedDecision {
-  id: string
-  domain: Setting["domain"]
-  title: string
-  applicability: {
-    status: "excluded"
-    reason: string
-    requirements: RequirementEvaluation
-  }
-}
-
-interface ExportCaveat {
-  code: string
-  message: string
-  decisionIds?: string[]
-}
-
-const evaluateRequirement = (
-  requirement: CapabilityRequirement | undefined,
-  capabilities: ReadonlySet<CapabilityId>,
-): RequirementEvaluation => {
-  const allOf = requirement?.allOf ?? []
-  const anyOf = requirement?.anyOf ?? []
-  const noneOf = requirement?.noneOf ?? []
-  return {
-    allOf,
-    anyOf,
-    noneOf,
-    missingAllOf: allOf.filter((capability) => !capabilities.has(capability)),
-    anyOfSatisfied: anyOf.length === 0 ? null : anyOf.some((capability) => capabilities.has(capability)),
-    presentNoneOf: noneOf.filter((capability) => capabilities.has(capability)),
-  }
-}
-
-const capabilityList = (capabilities: CapabilityId[]): string =>
-  capabilities.map((capability) => `\`${capability}\``).join(", ")
-
-const exclusionReason = (
-  setting: Setting,
-  capabilities: ReadonlySet<CapabilityId>,
-): string => {
-  const evaluation = evaluateRequirement(setting.availability, capabilities)
-  const reasons: string[] = []
-  if (evaluation.missingAllOf.length > 0) {
-    reasons.push(`missing required capabilities ${capabilityList(evaluation.missingAllOf)}`)
-  }
-  if (evaluation.anyOfSatisfied === false) {
-    reasons.push(`requires at least one of ${capabilityList(evaluation.anyOf)}`)
-  }
-  if (evaluation.presentNoneOf.length > 0) {
-    reasons.push(`conflicts with present capabilities ${capabilityList(evaluation.presentNoneOf)}`)
-  }
-  if (reasons.length > 0) return `Excluded by catalog availability: ${reasons.join("; ")}.`
-  return "Excluded because no catalog choice is compatible with the resolved capabilities."
-}
-
-const getExcludedDecisions = (
-  plan: Plan,
-  settings: RecommendedSetting[],
-): ExcludedDecision[] => {
-  const { capabilities } = resolveProfile(plan.profile)
-  const includedIds = new Set(settings.map((item) => item.setting.id))
-  return catalog
-    .filter((setting) => !includedIds.has(setting.id))
-    .map((setting) => ({
-      id: setting.id,
-      domain: setting.domain,
-      title: setting.title,
-      applicability: {
-        status: "excluded" as const,
-        reason: exclusionReason(setting, capabilities),
-        requirements: evaluateRequirement(setting.availability, capabilities),
-      },
-    }))
-}
-
-const reviewStatus = (
-  item: RecommendedSetting,
-  reviewedIds: ReadonlySet<string>,
-): "derived" | "reviewed" | "not-reviewed" =>
-  item.setting.editable === false
-    ? "derived"
-    : reviewedIds.has(item.setting.id) ? "reviewed" : "not-reviewed"
-
 const selectedChoice = (item: RecommendedSetting) =>
   item.setting.choices.find((choice) => choice.id === item.selected)
 
 const recommendedChoice = (item: RecommendedSetting) =>
   item.setting.choices.find((choice) => choice.id === item.recommended)
-
-const buildCaveats = (
-  plan: Plan,
-  settings: RecommendedSetting[],
-  reviewedIds: ReadonlySet<string>,
-  excluded: ExcludedDecision[],
-): ExportCaveat[] => {
-  const resolved = resolveProfile(plan.profile)
-  const caveats: ExportCaveat[] = [
-    ...resolved.errors.map((issue) => ({ code: issue.code, message: issue.message })),
-    ...resolved.warnings.map((issue) => ({ code: issue.code, message: issue.message })),
-  ]
-  const unreviewed = settings
-    .filter((item) => item.setting.editable !== false && !reviewedIds.has(item.setting.id))
-    .map((item) => item.setting.id)
-
-  if (plan.profile.currentState === "unknown") {
-    caveats.push({
-      code: "unresolved-current-state",
-      message: "Current tenant state is unknown; missing evidence is not treated as a gap.",
-    })
-  }
-  if (unreviewed.length > 0) {
-    caveats.push({
-      code: "unreviewed-decisions",
-      message: `${unreviewed.length} applicable editable decision${unreviewed.length === 1 ? " has" : "s have"} not been reviewed; values may be generated recommendations or explicit selections.`,
-      decisionIds: unreviewed,
-    })
-  }
-  if (excluded.length > 0) {
-    caveats.push({
-      code: "default-no-exclusions",
-      message: `${excluded.length} catalog decision${excluded.length === 1 ? " is" : "s are"} excluded by the resolved capability model. Exclusion is a default-no planning result, not live product or tenant validation.`,
-      decisionIds: excluded.map((item) => item.id),
-    })
-  }
-  return caveats
-}
 
 const sourceLinks = (sources: Source[]): string =>
   sources.map((source) => `[${source.label}](${source.url}) — ${source.tier}`).join("; ")
@@ -267,12 +141,9 @@ export const exportObject = (
   settings: RecommendedSetting[],
   reviewedSettingIds: string[] = [],
 ) => {
-  const applicableIds = new Set(settings.map((item) => item.setting.id))
-  const applicableReviewedSettingIds = reviewedSettingIds.filter((id) => applicableIds.has(id))
-  const reviewedIds = new Set(applicableReviewedSettingIds)
+  const analysis = buildPlanReviewAnalysis(plan, settings, reviewedSettingIds)
+  const reviewedIds = new Set(analysis.reviewedSettingIds)
   const resolved = resolveProfile(plan.profile)
-  const excludedDecisions = getExcludedDecisions(plan, settings)
-  const caveats = buildCaveats(plan, settings, reviewedIds, excludedDecisions)
   const decisions = settings.map((item, index) => {
     const { setting, selected, recommended, disposition } = item
     const choice = selectedChoice(item)
@@ -293,12 +164,12 @@ export const exportObject = (
         label: recommendedValue?.label ?? recommended,
       },
       disposition,
-      reviewStatus: reviewStatus(item, reviewedIds),
+      reviewStatus: getDecisionReviewStatus(item, reviewedIds),
       selectionSource: plan.selections[setting.id] === selected ? "explicit-selection" : "generated-recommendation",
       applicability: {
         status: "applicable" as const,
         reason: "Catalog availability requirements are satisfied by the resolved profile capabilities.",
-        requirements: evaluateRequirement(setting.availability, resolved.capabilities),
+        requirements: getRequirementEvaluation(setting.availability, resolved.capabilities),
       },
       rationale: setting.rationale,
       tradeoff: setting.tradeoff,
@@ -322,6 +193,8 @@ export const exportObject = (
     },
     schemaVersion: EXPORT_SCHEMA_VERSION,
     artifactType: "machine-readable desired-state contract",
+    artifactStatus: analysis.readiness.artifactStatus,
+    readiness: analysis.readiness,
     generatedAt: generatedAt(),
     purpose: "Preserve a versioned desired-state plan for configurator re-entry and authorized downstream adapters.",
     scope: "Desired-state configurator plan; not observed tenant state.",
@@ -353,15 +226,17 @@ export const exportObject = (
     priorities: plan.priorities,
     summary: {
       catalogDecisionCount: catalog.length,
-      applicableDecisionCount: settings.length,
-      excludedDecisionCount: excludedDecisions.length,
-      reviewedDecisionCount: settings.filter((item) => reviewStatus(item, reviewedIds) === "reviewed").length,
-      derivedDecisionCount: settings.filter((item) => reviewStatus(item, reviewedIds) === "derived").length,
-      unreviewedDecisionCount: settings.filter((item) => reviewStatus(item, reviewedIds) === "not-reviewed").length,
-      overrideCount: settings.filter((item) => item.disposition === "Override").length,
+      applicableDecisionCount: analysis.applicableDecisionCount,
+      applicableEditableDecisionCount: analysis.readiness.applicableEditableDecisionCount,
+      excludedDecisionCount: analysis.excludedDecisions.length,
+      reviewedDecisionCount: analysis.readiness.reviewedDecisionCount,
+      derivedDecisionCount: analysis.derivedDecisionCount,
+      unreviewedDecisionCount: analysis.readiness.remainingDecisionCount,
+      remainingDecisionCount: analysis.readiness.remainingDecisionCount,
+      overrideCount: analysis.overrideCount,
     },
-    caveats,
-    reviewedSettingIds: applicableReviewedSettingIds,
+    caveats: analysis.caveats,
+    reviewedSettingIds: analysis.reviewedSettingIds,
     domainProfiles: buildDomainProfiles(settings),
     implementationSteps: decisions.map((decision) => ({
       order: decision.order,
@@ -371,7 +246,7 @@ export const exportObject = (
       reviewStatus: decision.reviewStatus,
     })),
     settings: decisions,
-    excludedDecisions,
+    excludedDecisions: analysis.excludedDecisions,
   }
 }
 
@@ -383,9 +258,10 @@ export const buildMarkdown = (
   const profile = plan.profile
   const profiles = buildDomainProfiles(settings)
   const signature = buildPlanSignature(plan.intent, settings)
-  const reviewedIds = new Set(reviewedSettingIds)
-  const excluded = getExcludedDecisions(plan, settings)
-  const caveats = buildCaveats(plan, settings, reviewedIds, excluded)
+  const analysis = buildPlanReviewAnalysis(plan, settings, reviewedSettingIds)
+  const reviewedIds = new Set(analysis.reviewedSettingIds)
+  const excluded = analysis.excludedDecisions
+  const caveats = analysis.caveats
   const licensedProductLines = (Object.keys(licensedProductLabels) as LicensedProductId[])
     .map((product) => `- ${licensedProductLabels[product]}: ${licenseStatusLabels[profile.licensedProducts[product]]}`)
   const domainGroups = settings.reduce<Map<Setting["domain"], RecommendedSetting[]>>((groups, item) => {
@@ -406,7 +282,7 @@ export const buildMarkdown = (
     "",
     ...items.flatMap((item) => {
       const index = settings.findIndex((candidate) => candidate.setting.id === item.setting.id) + 1
-      const status = reviewStatus(item, reviewedIds)
+      const status = getDecisionReviewStatus(item, reviewedIds)
       const choice = selectedChoice(item)
       return [
         `- [ ] **${index}. ${item.setting.title} — ${choice?.label ?? item.selected}**`,
@@ -432,7 +308,7 @@ export const buildMarkdown = (
     ])
 
   const lines = [
-    "# GitHub Enterprise desired-state handoff",
+    `# GitHub Enterprise ${analysis.readiness.artifactStatus} desired-state handoff`,
     "",
     "## Purpose and how to use this document",
     "",
@@ -442,12 +318,16 @@ export const buildMarkdown = (
     "",
     "## Plan summary",
     `- Generated: ${generatedAt()}`,
+    `- Readiness status: ${analysis.readiness.status === "ready-for-handoff" ? "Ready for handoff" : "Draft"}`,
+    `- Artifact status: ${analysis.readiness.artifactStatus}`,
     `- Applicable decisions: ${settings.length}`,
+    `- Applicable editable decisions: ${analysis.readiness.applicableEditableDecisionCount}`,
     `- Excluded / not applicable: ${excluded.length}`,
-    `- Reviewed editable decisions: ${settings.filter((item) => reviewStatus(item, reviewedIds) === "reviewed").length}`,
-    `- Derived profile decisions: ${settings.filter((item) => reviewStatus(item, reviewedIds) === "derived").length}`,
-    `- Unreviewed editable decisions: ${settings.filter((item) => reviewStatus(item, reviewedIds) === "not-reviewed").length}`,
-    `- Deliberate overrides: ${settings.filter((item) => item.disposition === "Override").length}`,
+    `- Reviewed editable decisions: ${analysis.readiness.reviewedDecisionCount}`,
+    `- Remaining editable decisions: ${analysis.readiness.remainingDecisionCount}`,
+    `- Derived profile decisions: ${analysis.derivedDecisionCount}`,
+    `- Unreviewed editable decisions: ${analysis.readiness.remainingDecisionCount}`,
+    `- Deliberate overrides: ${analysis.overrideCount}`,
     "",
     "## Target profile",
     `- Deployment: ${deploymentLabels[profile.deployment]}`,
@@ -511,3 +391,10 @@ export const download = (filename: string, contents: string, type: string): void
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
 }
+
+export const exportFilename = (
+  format: ExportFormat,
+  artifactStatus: "draft" | "final",
+): string => format === "json"
+  ? `github-enterprise-${artifactStatus}-desired-state.json`
+  : `github-enterprise-${artifactStatus}-review-handoff.md`

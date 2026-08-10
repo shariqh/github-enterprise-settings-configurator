@@ -14,6 +14,12 @@ Published at
 - A Markdown review handoff with an ordered implementation checklist, owners, prerequisites, caveats, exclusions, and evidence links.
 - A versioned JSON desired-state contract with stable IDs, profile/capability context, review state, and additive schema-v2 fields for import or authorized downstream adapters.
 
+## Facilitating a pilot
+
+Use the app in a facilitated desired-state workshop with the enterprise owner and the identity, security, Actions, and Copilot stakeholders relevant to the selected scope. Do not enter secrets or sensitive customer data, and leave unknown facts as unknown. The configurator does not inspect or apply tenant settings and does not assess compliance.
+
+Review remains **Draft** until every applicable editable decision has been reviewed; profile-derived decisions do not block readiness. Draft Markdown and JSON exports remain available for workshop continuity after an explicit confirmation. Once review is complete, exports are labeled **Final** and **Ready for handoff**.
+
 ## Relative posture and complexity model
 
 The review view intentionally avoids a composite grade. Each domain has three separate relative scales:
@@ -100,6 +106,6 @@ source of truth for applying or recovering those controls.
 
 ## Export artifacts and adapters
 
-Choose Markdown when people need to review, assign, and work the plan. Choose JSON when a tool needs the versioned desired-state contract or when the plan should be imported back into the configurator. JSON schema v2 keeps the import-critical `profile`, `intent`, `priorities`, `settings[].id/selected`, and `reviewedSettingIds` fields stable; richer context is additive.
+Choose Markdown when people need to review, assign, and work the plan. Choose JSON when a tool needs the versioned desired-state contract or when the plan should be imported back into the configurator. Both artifacts include readiness, reviewed, remaining, and draft/final metadata. JSON schema v2 keeps the import-critical `profile`, `intent`, `priorities`, `settings[].id/selected`, and `reviewedSettingIds` fields stable; readiness and richer context remain additive.
 
 A future adapter may turn the JSON contract into review tickets, policy-as-code drafts, or Terraform-provider inputs after an authorized user validates each setting and the target GitHub capability. Direct application, identity validation, tenant discovery, and billing-resource validation remain explicitly out of scope for this static MVP.
