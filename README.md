@@ -7,7 +7,7 @@ Published at
 
 ## Scope
 
-- Target profiles for GitHub.com, GHE.com data residency, or GHES 3.21 with deployment-aware account, authentication, and provisioning choices.
+- Target profiles for GitHub Enterprise Cloud, GitHub Enterprise Cloud with data residency, or GitHub Enterprise Server 3.21 with deployment-aware account, authentication, and provisioning choices.
 - Base plan, repository visibility, licensed products, and planning scope are modeled independently; GitHub Enterprise does not imply Copilot or paid security products.
 - Typed decisions span identity, governance, Secret Protection, Code Security, Code Quality, Actions, audit, Copilot governance, and Copilot cost controls.
 - Progressive disclosure for rationale, tradeoffs, prerequisites, consequences, scope, role, apply method, and source links.

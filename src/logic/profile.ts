@@ -1,6 +1,7 @@
 import { defaultIntent } from "./intent"
 import { identityCompatibilityMatrix } from "./capabilities"
 import { getRecommendedSettings } from "./recommendations"
+import { deploymentLabels } from "../profileLabels"
 import type {
   MigrationNotice,
   PlanDraftState,
@@ -133,7 +134,7 @@ export function transitionProfile(
     profile.repositoryVisibility = "private-internal"
     notices.push({
       code: "residency-visibility-reset",
-      message: "Repository visibility was changed to private/internal because GHE.com does not support public repositories.",
+      message: `Repository visibility was changed to private and internal because ${deploymentLabels.residency} does not support public repositories.`,
     })
   }
 
@@ -142,14 +143,14 @@ export function transitionProfile(
       profile.licensedProducts.copilot = "none"
       notices.push({
         code: "ghes-copilot-reset",
-        message: "Copilot was removed because it is not available for GHES.",
+        message: `Copilot was removed because it is not available for ${deploymentLabels.ghes}.`,
       })
     }
     if (profile.licensedProducts.codeQuality !== "unlicensed") {
       profile.licensedProducts.codeQuality = "unlicensed"
       notices.push({
         code: "ghes-code-quality-reset",
-        message: "Code Quality was removed because it is not available for GHES at launch.",
+        message: `Code Quality was removed because it is not available for ${deploymentLabels.ghes} at launch.`,
       })
     }
   }
@@ -158,7 +159,7 @@ export function transitionProfile(
     profile.licensedProducts.codeQuality = "unlicensed"
     notices.push({
       code: "residency-code-quality-reset",
-      message: "Code Quality was removed because GitHub has not documented availability for GHE.com data residency.",
+      message: `Code Quality was removed because GitHub has not documented availability for ${deploymentLabels.residency}.`,
     })
   }
 
@@ -166,7 +167,7 @@ export function transitionProfile(
     profile.licensedProducts.copilot = "none"
     notices.push({
       code: "team-copilot-reset",
-      message: "Copilot Enterprise was removed because it requires GitHub Enterprise Cloud.",
+      message: `Copilot Enterprise was removed because it requires ${deploymentLabels.dotcom}.`,
     })
   }
 

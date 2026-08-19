@@ -1,4 +1,5 @@
 import { catalog, priorityOptions } from "../catalog"
+import { deploymentLabels } from "../profileLabels"
 import {
   accountModels,
   authenticationMethods,
@@ -418,7 +419,7 @@ export function migrateLegacyProfile(
     provisioning = "unknown"
     notices.push({
       code: "legacy-ghes-identity-unknown",
-      message: "GHES authentication and provisioning could not be inferred from the legacy plan and were set to unknown.",
+      message: `${deploymentLabels.ghes} authentication and provisioning could not be inferred from the legacy plan and were set to unknown.`,
     })
   } else if (deployment === "residency") {
     accountModel = "managed"
@@ -426,7 +427,7 @@ export function migrateLegacyProfile(
     provisioning = "scim"
     notices.push({
       code: "legacy-residency-emu-required",
-      message: "GHE.com data residency requires Enterprise Managed Users; the account model was set to managed users, authentication to unknown, and provisioning to SCIM.",
+      message: `${deploymentLabels.residency} requires Enterprise Managed Users; the account model was set to managed users, authentication to unknown, and provisioning to SCIM.`,
     })
   } else if (legacy.identity === "emu") {
     accountModel = "managed"

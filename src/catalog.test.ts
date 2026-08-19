@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { catalog, priorityOptions } from "./catalog"
+import { deploymentLabels } from "./profileLabels"
 import type { CapabilityId, CapabilityRequirement, Domain, PriorityId, SourceTier } from "./types"
 
 const domains: Domain[] = [
@@ -122,6 +123,12 @@ describe("catalog data integrity", () => {
     }
   })
 
+  it("describes an application method instead of repeating the setting title", () => {
+    for (const setting of catalog) {
+      expect(setting.applyMethod, setting.id).not.toBe(setting.title)
+    }
+  })
+
   it("gives every setting at least one source with a valid tier and URL", () => {
     for (const setting of catalog) {
       expect(setting.sources.length, setting.id).toBeGreaterThan(0)
@@ -172,6 +179,22 @@ describe("catalog data integrity", () => {
         expect(setting.availability, setting.id).toBeDefined()
       }
     }
+  })
+
+  it("uses the canonical deployment labels in the catalog", () => {
+    const deploymentSetting = catalog.find((setting) => setting.id === "enterprise-type")
+    expect(deploymentSetting?.choices.map(({ id, label }) => ({ id, label }))).toEqual([
+      { id: "dotcom", label: deploymentLabels.dotcom },
+      { id: "residency", label: deploymentLabels.residency },
+      { id: "ghes", label: deploymentLabels.ghes },
+    ])
+  })
+
+  it("uses current GitHub terminology for Copilot cost controls", () => {
+    const titles = new Map(catalog.map((setting) => [setting.id, setting.title]))
+    expect(titles.get("cost-center-mapping")).toBe("Copilot cost center mapping")
+    expect(titles.get("cculb")).toBe("Copilot cost center budget")
+    expect(titles.get("included-usage-cap")).toBe("Included usage controls for cost centers")
   })
 })
 
