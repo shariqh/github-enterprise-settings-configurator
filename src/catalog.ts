@@ -133,7 +133,7 @@ export const catalog: Setting[] = [
       {
         id: "ghes-saml-scim-preview",
         label: "GitHub Enterprise Server · SAML SSO + SCIM (public preview)",
-        description: "Automated lifecycle using the GitHub Enterprise Server 3.21 SCIM public preview; SAML authentication is required.",
+        description: "Automated lifecycle using the GitHub Enterprise Server SCIM public preview; SAML authentication is required.",
         availability: { allOf: ["instance-accounts", "enterprise-saml", "scim", "ghes-scim-preview"] },
       },
       {

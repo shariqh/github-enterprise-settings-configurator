@@ -134,6 +134,9 @@ export const exportObject = (
       "Does not inspect, validate, or change a GitHub tenant.",
       "Does not establish compliance or confirm product availability beyond the catalog evidence and resolved profile.",
       "Application outcomes must be validated by an authorized operator.",
+      ...(plan.profile.deployment === "ghes"
+        ? ["GitHub Enterprise Server recommendations target the latest generally available release; confirm the deployed release before implementation."]
+        : []),
     ],
     catalog: catalogMetadata,
     profile: plan.profile,
@@ -309,6 +312,9 @@ export const buildMarkdown = (
     "## Boundaries",
     "- Static desired state only; no tenant observation, direct apply, or backend connection.",
     "- This plan provides decision support, not a universal security score, breach prediction, or cross-customer comparison.",
+    ...(profile.deployment === "ghes"
+      ? ["- GitHub Enterprise Server recommendations target the latest generally available release recorded in the catalog; confirm the deployed release before implementation."]
+      : []),
     "- An authorized operator must validate target capability, access, implementation, and outcome.",
   ]
   return lines.join("\n")

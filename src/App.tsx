@@ -1100,6 +1100,10 @@ function ProfileContext() {
         <p>A recommendation is not treated as accepted until you save it or explicitly accept the remaining recommendations in that domain.</p>
       </section>
       <section>
+        <h2>Product baseline</h2>
+        <p>Cloud recommendations follow current GitHub documentation. GitHub Enterprise Server recommendations target the latest generally available release; confirm the customer&apos;s deployed release before implementation.</p>
+      </section>
+      <section>
         <h2>Boundary</h2>
         <p>Unknown tenant state is not converted into a gap. This remains a desired-state planning tool.</p>
       </section>

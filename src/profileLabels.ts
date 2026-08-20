@@ -15,7 +15,7 @@ import type {
 export const deploymentLabels = {
   dotcom: "GitHub Enterprise Cloud",
   residency: "GitHub Enterprise Cloud with data residency",
-  ghes: "GitHub Enterprise Server 3.21",
+  ghes: "GitHub Enterprise Server",
 } satisfies Record<Deployment, string>
 
 export const basePlanLabels = {
