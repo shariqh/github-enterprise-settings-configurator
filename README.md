@@ -7,7 +7,7 @@ Published at
 
 ## Scope
 
-- Target profiles for GitHub Enterprise Cloud, GitHub Enterprise Cloud with data residency, or GitHub Enterprise Server with deployment-aware account, authentication, and provisioning choices.
+- Target profiles for GitHub Enterprise Cloud, GitHub Enterprise Cloud with Data Residency, or GitHub Enterprise Server with deployment-aware account, authentication, and provisioning choices.
 - GitHub Enterprise Server recommendations target the latest generally available release; catalog metadata and evidence links remain version-pinned for reproducibility.
 - Base plan, repository visibility, licensed products, and planning scope are modeled independently; GitHub Enterprise does not imply Copilot or paid security products.
 - Typed decisions span identity, governance, Secret Protection, Code Security, Code Quality, Actions, audit, Copilot governance, and Copilot cost controls.

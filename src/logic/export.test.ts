@@ -255,6 +255,20 @@ describe("buildMarkdown", () => {
     expect(json.limitations).toContain("GitHub Enterprise Server recommendations target the latest generally available release; confirm the deployed release before implementation.")
   })
 
+  it("capitalizes the GitHub Enterprise Cloud with Data Residency product name", () => {
+    const plan = basePlan()
+    plan.profile = {
+      ...plan.profile,
+      deployment: "residency",
+      accountModel: "managed",
+      authentication: "saml",
+      provisioning: "scim",
+      repositoryVisibility: "private-internal",
+    }
+
+    expect(buildMarkdown(plan, [])).toContain("- Deployment: GitHub Enterprise Cloud with Data Residency")
+  })
+
   it("turns applicable settings into a domain-ordered implementation checklist", () => {
     const included = baseSetting({ id: "included", title: "Included setting", domain: "Code security" })
     const codeQuality = baseSetting({ id: "codeql-config", title: "CodeQL configuration", domain: "Code quality" })
