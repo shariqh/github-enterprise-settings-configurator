@@ -10,9 +10,9 @@
   "readiness": {
     "status": "draft",
     "artifactStatus": "draft",
-    "applicableEditableDecisionCount": 3,
-    "reviewedDecisionCount": 1,
-    "remainingDecisionCount": 2,
+    "applicableEditableDecisionCount": 16,
+    "reviewedDecisionCount": 15,
+    "remainingDecisionCount": 1,
     "isReady": false
   },
   "generatedAt": "2026-01-15T00:00:00.000Z",
@@ -24,10 +24,22 @@
     "Application outcomes must be validated by an authorized operator.",
     "GitHub Enterprise Server recommendations target the latest generally available release; confirm the deployed release before implementation."
   ],
+  "catalog": {
+    "catalogVersion": "2026.08.07",
+    "lastVerifiedAt": "2026-08-07",
+    "changelogReviewedThrough": "2026-08-07",
+    "evidenceLedgerPath": "docs/catalog-audit-2026.md",
+    "documentationBaseline": {
+      "enterpriseCloud": "latest as of 2026-08-07",
+      "enterpriseServerTarget": "latest generally available release",
+      "enterpriseServer": "3.21.4",
+      "restApi": "2026-03-10"
+    }
+  },
   "profile": {
     "deployment": "ghes",
     "basePlan": "enterprise",
-    "accountModel": "managed",
+    "accountModel": "instance",
     "authentication": "saml",
     "provisioning": "scim",
     "repositoryVisibility": "private-internal",
@@ -35,114 +47,1598 @@
     "licensedProducts": {
       "secretProtection": "licensed",
       "codeSecurity": "licensed",
-      "codeQuality": "unknown",
-      "copilot": "business"
+      "codeQuality": "unlicensed",
+      "copilot": "none"
     },
-    "planningScope": { "actions": true, "audit": true }
+    "planningScope": {
+      "actions": true,
+      "audit": true
+    }
   },
-  "intent": { "guardrailStrength": 2, "rolloutPace": 1, "operationalCapacity": 1 },
-  "priorities": ["security-rollout"],
+  "capabilityContext": {
+    "resolvedCapabilities": [
+      "actions",
+      "organization-audit",
+      "dependency-graph",
+      "dependabot-alerts",
+      "enterprise-account",
+      "internal-repositories",
+      "enterprise-audit",
+      "instance-accounts",
+      "enterprise-saml",
+      "scim",
+      "ghes-scim-preview",
+      "actions-planning",
+      "audit-planning",
+      "secret-scanning",
+      "secret-protection",
+      "code-scanning",
+      "code-security"
+    ],
+    "profileErrors": [],
+    "profileWarnings": [
+      {
+        "code": "ghes-scim-preview",
+        "field": "provisioning",
+        "message": "SCIM provisioning for GitHub Enterprise Server is a public preview and requires SAML authentication."
+      }
+    ],
+    "exclusionPolicy": "Catalog decisions remain excluded by default when capability requirements are not satisfied."
+  },
+  "intent": {
+    "guardrailStrength": 2,
+    "rolloutPace": 1,
+    "operationalCapacity": 1
+  },
+  "planningContext": {
+    "intent": [
+      {
+        "id": "guardrailStrength",
+        "level": 2,
+        "label": "Guardrail strength",
+        "valueLabel": "Strong"
+      },
+      {
+        "id": "rolloutPace",
+        "level": 1,
+        "label": "Rollout pace",
+        "valueLabel": "Steady"
+      },
+      {
+        "id": "operationalCapacity",
+        "level": 1,
+        "label": "Operational capacity",
+        "valueLabel": "Balanced"
+      }
+    ],
+    "priorities": [
+      {
+        "id": "security-rollout",
+        "label": "Code-security rollout",
+        "description": "Incremental coverage with clear ownership."
+      }
+    ],
+    "planSignature": {
+      "headline": "Strong guardrails · Steady rollout",
+      "narrative": "This plan assumes a balanced operating model. Rollout effort is distributed across several domains. Ongoing ownership is distributed across several domains."
+    }
+  },
+  "planSignature": {
+    "headline": "Strong guardrails · Steady rollout",
+    "narrative": "This plan assumes a balanced operating model. Rollout effort is distributed across several domains. Ongoing ownership is distributed across several domains."
+  },
+  "priorities": [
+    "security-rollout"
+  ],
   "summary": {
-    "catalogDecisionCount": 24,
-    "applicableDecisionCount": 3,
-    "applicableEditableDecisionCount": 3,
-    "excludedDecisionCount": 1,
-    "reviewedDecisionCount": 1,
-    "derivedDecisionCount": 0,
-    "unreviewedDecisionCount": 2,
-    "remainingDecisionCount": 2,
+    "catalogDecisionCount": 31,
+    "applicableDecisionCount": 18,
+    "applicableEditableDecisionCount": 16,
+    "excludedDecisionCount": 13,
+    "reviewedDecisionCount": 15,
+    "derivedDecisionCount": 2,
+    "unreviewedDecisionCount": 1,
+    "remainingDecisionCount": 1,
     "overrideCount": 1
   },
   "caveats": [
     {
+      "code": "ghes-scim-preview",
+      "message": "SCIM provisioning for GitHub Enterprise Server is a public preview and requires SAML authentication."
+    },
+    {
       "code": "unreviewed-decisions",
-      "message": "2 applicable editable decisions have not been reviewed; values may be generated recommendations or explicit selections.",
-      "decisionIds": ["identity-saml-enforcement", "actions-runner-policy"]
+      "message": "1 applicable editable decision has not been reviewed; values may be generated recommendations or explicit selections.",
+      "decisionIds": [
+        "default-branch-ruleset"
+      ]
     },
     {
       "code": "default-no-exclusions",
-      "message": "1 catalog decision is excluded by the resolved capability model. Exclusion is a default-no planning result, not live product or tenant validation.",
-      "decisionIds": ["copilot-enterprise-knowledge-bases"]
+      "message": "13 catalog decisions are excluded by the resolved capability model. Exclusion is a default-no planning result, not live product or tenant validation.",
+      "decisionIds": [
+        "code-quality-targeting",
+        "code-quality-setup-findings",
+        "code-quality-coverage",
+        "code-quality-merge-gates",
+        "copilot-license-topology",
+        "copilot-public-code",
+        "copilot-content-exclusion",
+        "copilot-model-policy",
+        "copilot-usage-metrics",
+        "cost-center-mapping",
+        "cculb",
+        "included-usage-cap",
+        "enterprise-budget-backstop"
+      ]
     }
   ],
-  "reviewedSettingIds": ["secret-scanning-push-protection"],
+  "reviewedSettingIds": [
+    "admin-redundancy",
+    "verified-domains",
+    "secret-scanning-push-protection",
+    "secret-protection-configuration",
+    "code-security-configuration",
+    "code-scanning-setup",
+    "dependency-coverage",
+    "premium-dependabot",
+    "allowed-actions",
+    "workflow-token",
+    "runner-network",
+    "audit-streaming",
+    "default-repo-permission",
+    "member-repo-creation",
+    "outside-collaborators"
+  ],
   "domainProfiles": [
     {
       "domain": "Identity & administration",
-      "posture": 0.42,
-      "postureLabel": "Moderate",
+      "posture": 1,
+      "postureLabel": "Higher",
+      "foundationLimited": false,
+      "rolloutLoad": 1,
+      "rolloutBand": "High",
+      "ongoingLoad": 1,
+      "ongoingBand": "High"
+    },
+    {
+      "domain": "Organization & repository governance",
+      "posture": 0.7250000000000001,
+      "postureLabel": "Higher",
       "foundationLimited": true,
-      "rolloutLoad": 0.55,
-      "rolloutBand": "Moderate",
-      "ongoingLoad": 0.4,
-      "ongoingBand": "Moderate"
+      "rolloutLoad": 0.8,
+      "rolloutBand": "High",
+      "ongoingLoad": 0.7714285714285715,
+      "ongoingBand": "High"
     },
     {
       "domain": "Code security",
-      "posture": 0.81,
+      "posture": 1,
       "postureLabel": "Higher",
       "foundationLimited": false,
-      "rolloutLoad": 0.3,
-      "rolloutBand": "Low",
-      "ongoingLoad": 0.25,
-      "ongoingBand": "Low"
+      "rolloutLoad": 1,
+      "rolloutBand": "High",
+      "ongoingLoad": 1,
+      "ongoingBand": "High"
+    },
+    {
+      "domain": "Actions & supply chain",
+      "posture": 1,
+      "postureLabel": "Higher",
+      "foundationLimited": false,
+      "rolloutLoad": 1,
+      "rolloutBand": "High",
+      "ongoingLoad": 1,
+      "ongoingBand": "High"
+    },
+    {
+      "domain": "Audit visibility",
+      "posture": 1,
+      "postureLabel": "Higher",
+      "foundationLimited": false,
+      "rolloutLoad": 1,
+      "rolloutBand": "High",
+      "ongoingLoad": 1,
+      "ongoingBand": "High"
+    }
+  ],
+  "implementationSteps": [
+    {
+      "order": 1,
+      "decisionId": "enterprise-type",
+      "domain": "Identity & administration",
+      "desiredStateId": "ghes",
+      "reviewStatus": "derived"
+    },
+    {
+      "order": 2,
+      "decisionId": "identity-lifecycle",
+      "domain": "Identity & administration",
+      "desiredStateId": "ghes-saml-scim-preview",
+      "reviewStatus": "derived"
+    },
+    {
+      "order": 3,
+      "decisionId": "admin-redundancy",
+      "domain": "Identity & administration",
+      "desiredStateId": "three",
+      "reviewStatus": "reviewed"
+    },
+    {
+      "order": 4,
+      "decisionId": "verified-domains",
+      "domain": "Identity & administration",
+      "desiredStateId": "verify",
+      "reviewStatus": "reviewed"
+    },
+    {
+      "order": 5,
+      "decisionId": "default-repo-permission",
+      "domain": "Organization & repository governance",
+      "desiredStateId": "none",
+      "reviewStatus": "reviewed"
+    },
+    {
+      "order": 6,
+      "decisionId": "member-repo-creation",
+      "domain": "Organization & repository governance",
+      "desiredStateId": "restricted",
+      "reviewStatus": "reviewed"
+    },
+    {
+      "order": 7,
+      "decisionId": "default-branch-ruleset",
+      "domain": "Organization & repository governance",
+      "desiredStateId": "advisory",
+      "reviewStatus": "not-reviewed"
+    },
+    {
+      "order": 8,
+      "decisionId": "outside-collaborators",
+      "domain": "Organization & repository governance",
+      "desiredStateId": "approve-no-private-forks",
+      "reviewStatus": "reviewed"
+    },
+    {
+      "order": 9,
+      "decisionId": "secret-protection-configuration",
+      "domain": "Code security",
+      "desiredStateId": "baseline-all",
+      "reviewStatus": "reviewed"
+    },
+    {
+      "order": 10,
+      "decisionId": "secret-scanning-push-protection",
+      "domain": "Code security",
+      "desiredStateId": "scan-push",
+      "reviewStatus": "reviewed"
+    },
+    {
+      "order": 11,
+      "decisionId": "code-security-configuration",
+      "domain": "Code security",
+      "desiredStateId": "baseline-all",
+      "reviewStatus": "reviewed"
+    },
+    {
+      "order": 12,
+      "decisionId": "code-scanning-setup",
+      "domain": "Code security",
+      "desiredStateId": "default-setup-all",
+      "reviewStatus": "reviewed"
+    },
+    {
+      "order": 13,
+      "decisionId": "dependency-coverage",
+      "domain": "Code security",
+      "desiredStateId": "graph-alerts-updates",
+      "reviewStatus": "reviewed"
+    },
+    {
+      "order": 14,
+      "decisionId": "premium-dependabot",
+      "domain": "Code security",
+      "desiredStateId": "auto-triage-managed",
+      "reviewStatus": "reviewed"
+    },
+    {
+      "order": 15,
+      "decisionId": "allowed-actions",
+      "domain": "Actions & supply chain",
+      "desiredStateId": "verified-pinned",
+      "reviewStatus": "reviewed"
+    },
+    {
+      "order": 16,
+      "decisionId": "workflow-token",
+      "domain": "Actions & supply chain",
+      "desiredStateId": "read",
+      "reviewStatus": "reviewed"
+    },
+    {
+      "order": 17,
+      "decisionId": "runner-network",
+      "domain": "Actions & supply chain",
+      "desiredStateId": "segmented",
+      "reviewStatus": "reviewed"
+    },
+    {
+      "order": 18,
+      "decisionId": "audit-streaming",
+      "domain": "Audit visibility",
+      "desiredStateId": "stream-siem",
+      "reviewStatus": "reviewed"
     }
   ],
   "settings": [
     {
       "order": 1,
-      "id": "identity-saml-enforcement",
+      "id": "enterprise-type",
       "domain": "Identity & administration",
-      "title": "Enforce SAML single sign-on",
-      "selected": "enforced",
+      "title": "Enterprise type and hosting consequence",
+      "selected": "ghes",
+      "desiredState": {
+        "id": "ghes",
+        "label": "GitHub Enterprise Server",
+        "description": "Self-hosted appliance operations and upgrade ownership."
+      },
+      "recommendedState": {
+        "id": "ghes",
+        "label": "GitHub Enterprise Server"
+      },
       "disposition": "Recommended",
-      "reviewStatus": "not-reviewed",
+      "reviewStatus": "derived",
       "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "Hosting defines identity, networking, operational ownership, and feature availability.",
+      "tradeoff": "Data residency and self-hosting add operational constraints in exchange for control.",
+      "prerequisites": "A named enterprise owner and an approved hostname or appliance plan.",
+      "consequences": "Changing hosting later is a migration program, not a toggle.",
       "scope": "Enterprise",
-      "role": "Identity administrator",
-      "sources": []
+      "role": "Enterprise owner",
+      "applyMethod": "Enterprise setup and documented architecture decision",
+      "influence": "Guardrail",
+      "rolloutBand": "High",
+      "ongoingBand": "Moderate",
+      "sources": [
+        {
+          "label": "Enterprise account overview",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/enterprise-cloud@latest/admin/overview/about-github-enterprise-cloud"
+        },
+        {
+          "label": "GitHub Well-Architected",
+          "tier": "Well-Architected · principles",
+          "url": "https://learn.github.com/well-architected/"
+        }
+      ]
     },
     {
       "order": 2,
-      "id": "actions-runner-policy",
-      "domain": "Actions & supply chain",
-      "title": "Restrict self-hosted runner groups",
-      "selected": "restricted-to-approved-repos",
-      "disposition": "Override",
-      "reviewStatus": "not-reviewed",
-      "selectionSource": "explicit-selection",
-      "scope": "Enterprise",
-      "role": "Platform engineering",
-      "sources": []
+      "id": "identity-lifecycle",
+      "domain": "Identity & administration",
+      "title": "Identity, SSO, and provisioning lifecycle",
+      "selected": "ghes-saml-scim-preview",
+      "desiredState": {
+        "id": "ghes-saml-scim-preview",
+        "label": "GitHub Enterprise Server · SAML SSO + SCIM (public preview)",
+        "description": "Automated lifecycle using the GitHub Enterprise Server SCIM public preview; SAML authentication is required."
+      },
+      "recommendedState": {
+        "id": "ghes-saml-scim-preview",
+        "label": "GitHub Enterprise Server · SAML SSO + SCIM (public preview)"
+      },
+      "disposition": "Recommended",
+      "reviewStatus": "derived",
+      "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "The identity lifecycle is fixed by the deployment, account model, and directory choice already captured in the profile.",
+      "tradeoff": "Changing lifecycle later means re-provisioning identities and re-testing SSO end to end.",
+      "prerequisites": "A confirmed account model, authentication method, and provisioning method for this deployment.",
+      "consequences": "Recording the wrong lifecycle here misrepresents onboarding, offboarding, and audit evidence.",
+      "scope": "Enterprise identity",
+      "role": "Identity administrator",
+      "applyMethod": "Enterprise or organization identity provider configuration",
+      "influence": "Guardrail",
+      "rolloutBand": "Moderate",
+      "ongoingBand": "Moderate",
+      "sources": [
+        {
+          "label": "SAML SSO for enterprise",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/enterprise-cloud@latest/admin/managing-iam/using-saml-for-enterprise-iam/configuring-saml-single-sign-on-for-your-enterprise"
+        },
+        {
+          "label": "SCIM provisioning",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/enterprise-cloud@latest/admin/managing-iam/provisioning-user-accounts-with-scim/configuring-scim-provisioning-for-users"
+        },
+        {
+          "label": "Enterprise Managed Users",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/enterprise-cloud@latest/admin/concepts/identity-and-access-management/enterprise-managed-users"
+        },
+        {
+          "label": "Using CAS for GitHub Enterprise Server",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/enterprise-server@3.21/admin/managing-iam/using-cas-for-enterprise-iam/using-cas"
+        },
+        {
+          "label": "Using LDAP for GitHub Enterprise Server",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/enterprise-server@3.21/admin/managing-iam/using-ldap-for-enterprise-iam/using-ldap"
+        },
+        {
+          "label": "SCIM provisioning on GitHub Enterprise Server (public preview)",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/enterprise-server@3.21/admin/managing-iam/provisioning-user-accounts-with-scim/user-provisioning-with-scim-on-ghes"
+        }
+      ]
     },
     {
       "order": 3,
-      "id": "secret-scanning-push-protection",
-      "domain": "Code security",
-      "title": "Enable secret scanning push protection",
-      "selected": "enforced",
+      "id": "admin-redundancy",
+      "domain": "Identity & administration",
+      "title": "Enterprise admin redundancy",
+      "selected": "three",
+      "desiredState": {
+        "id": "three",
+        "label": "At least 3 named owners",
+        "description": "Redundant coverage across time zones or teams."
+      },
+      "recommendedState": {
+        "id": "three",
+        "label": "At least 3 named owners"
+      },
       "disposition": "Recommended",
       "reviewStatus": "reviewed",
       "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [
+            "enterprise-account"
+          ],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "Multiple accountable owners reduce a single-person recovery failure.",
+      "tradeoff": "More owners require clearer role boundaries and audit attention.",
+      "prerequisites": "Named individuals, an escalation route, and periodic access review.",
+      "consequences": "A single owner can block incident recovery or renewal administration.",
+      "scope": "Enterprise",
+      "role": "Enterprise owner",
+      "applyMethod": "Access assignment and operating runbook",
+      "influence": "Protective",
+      "rolloutBand": "Low",
+      "ongoingBand": "Low",
+      "sources": [
+        {
+          "label": "GitHub Well-Architected",
+          "tier": "Well-Architected · principles",
+          "url": "https://learn.github.com/well-architected/"
+        },
+        {
+          "label": "Managing enterprise members",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/enterprise-cloud@latest/admin/user-management/managing-users-in-your-enterprise"
+        }
+      ]
+    },
+    {
+      "order": 4,
+      "id": "verified-domains",
+      "domain": "Identity & administration",
+      "title": "Verified domain ownership",
+      "selected": "verify",
+      "desiredState": {
+        "id": "verify",
+        "label": "Verify and monitor domains",
+        "description": "Establish organizational control of company domains."
+      },
+      "recommendedState": {
+        "id": "verify",
+        "label": "Verify and monitor domains"
+      },
+      "disposition": "Recommended",
+      "reviewStatus": "reviewed",
+      "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [
+            "enterprise-account"
+          ],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "Verified domains anchor identity and notification governance to an accountable organization.",
+      "tradeoff": "DNS changes need coordination and a clear rollback owner.",
+      "prerequisites": "DNS access and an inventory of active corporate domains.",
+      "consequences": "Unverified domains can complicate identity governance and support workflows.",
+      "scope": "Enterprise",
+      "role": "Domain administrator",
+      "applyMethod": "Enterprise settings and DNS TXT record",
+      "influence": "Guardrail",
+      "rolloutBand": "Low",
+      "ongoingBand": "Low",
+      "sources": [
+        {
+          "label": "Verifying domains",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/enterprise-cloud@latest/admin/configuring-settings/configuring-user-applications-for-your-enterprise/verifying-or-approving-a-domain-for-your-enterprise"
+        }
+      ]
+    },
+    {
+      "order": 5,
+      "id": "default-repo-permission",
+      "domain": "Organization & repository governance",
+      "title": "Default repository permission",
+      "selected": "none",
+      "desiredState": {
+        "id": "none",
+        "label": "No default access",
+        "description": "Teams grant repository access intentionally."
+      },
+      "recommendedState": {
+        "id": "none",
+        "label": "No default access"
+      },
+      "disposition": "Recommended",
+      "reviewStatus": "reviewed",
+      "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [
+            "enterprise-account"
+          ],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "Intentional repository access reduces accidental exposure and simplifies access review.",
+      "tradeoff": "Teams must be maintained and onboarding can take an extra request.",
+      "prerequisites": "A team model and a repository ownership convention.",
+      "consequences": "Default access can make private repository visibility broader than intended.",
       "scope": "Organization",
-      "role": "Security lead",
-      "sources": []
+      "role": "Organization owner",
+      "applyMethod": "Organization member privileges",
+      "influence": "Protective",
+      "rolloutBand": "Moderate",
+      "ongoingBand": "Moderate",
+      "sources": [
+        {
+          "label": "Organization member privileges",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-repository-roles/setting-base-permissions-for-an-organization"
+        },
+        {
+          "label": "safe-settings",
+          "tier": "Worked example · adaptable",
+          "url": "https://github.com/github-community-projects/safe-settings"
+        }
+      ]
+    },
+    {
+      "order": 6,
+      "id": "member-repo-creation",
+      "domain": "Organization & repository governance",
+      "title": "Member repository creation",
+      "selected": "restricted",
+      "desiredState": {
+        "id": "restricted",
+        "label": "Restricted to owners",
+        "description": "Use a request or template-led creation path."
+      },
+      "recommendedState": {
+        "id": "restricted",
+        "label": "Restricted to owners"
+      },
+      "disposition": "Recommended",
+      "reviewStatus": "reviewed",
+      "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [
+            "enterprise-account"
+          ],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "A controlled creation path helps establish ownership, templates, and baseline controls early.",
+      "tradeoff": "Tighter controls can slow experimentation without a lightweight request path.",
+      "prerequisites": "Repository templates and an ownership intake path.",
+      "consequences": "Open creation can yield unmanaged repositories and uneven policy adoption.",
+      "scope": "Organization",
+      "role": "Organization owner",
+      "applyMethod": "Organization member privileges",
+      "influence": "Guardrail",
+      "rolloutBand": "Moderate",
+      "ongoingBand": "Low",
+      "sources": [
+        {
+          "label": "Restricting repository creation",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/organizations/managing-organization-settings/restricting-repository-creation-in-your-organization"
+        },
+        {
+          "label": "safe-settings",
+          "tier": "Worked example · adaptable",
+          "url": "https://github.com/github-community-projects/safe-settings"
+        }
+      ]
+    },
+    {
+      "order": 7,
+      "id": "default-branch-ruleset",
+      "domain": "Organization & repository governance",
+      "title": "Default branch ruleset",
+      "selected": "advisory",
+      "desiredState": {
+        "id": "advisory",
+        "label": "Template only",
+        "description": "Offer an adaptable ruleset without enforcement."
+      },
+      "recommendedState": {
+        "id": "required-pr",
+        "label": "Required PR + checks"
+      },
+      "disposition": "Override",
+      "reviewStatus": "not-reviewed",
+      "selectionSource": "explicit-selection",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [
+            "enterprise-account"
+          ],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "A default ruleset gives new repositories an intentional merge control from creation.",
+      "tradeoff": "Required checks need reliable CI ownership or they become delivery friction.",
+      "prerequisites": "Named code owners, reliable checks, and an exception process.",
+      "consequences": "Overly broad enforcement can block emergency changes without bypass governance.",
+      "scope": "Organization and repositories",
+      "role": "Organization owner / repository administrator",
+      "applyMethod": "Repository rulesets or policy-as-code adapter",
+      "influence": "Protective",
+      "rolloutBand": "Moderate",
+      "ongoingBand": "Moderate",
+      "sources": [
+        {
+          "label": "About rulesets",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets"
+        },
+        {
+          "label": "ruleset-recipes",
+          "tier": "Worked example · adaptable",
+          "url": "https://github.com/github/ruleset-recipes"
+        },
+        {
+          "label": "Terraform provider for GitHub",
+          "tier": "Automation adapter · execution",
+          "url": "https://github.com/integrations/terraform-provider-github"
+        }
+      ]
+    },
+    {
+      "order": 8,
+      "id": "outside-collaborators",
+      "domain": "Organization & repository governance",
+      "title": "Outside collaborator and forking posture",
+      "selected": "approve-no-private-forks",
+      "desiredState": {
+        "id": "approve-no-private-forks",
+        "label": "Approval + no private forks",
+        "description": "Require review before external access or private forking."
+      },
+      "recommendedState": {
+        "id": "approve-no-private-forks",
+        "label": "Approval + no private forks"
+      },
+      "disposition": "Recommended",
+      "reviewStatus": "reviewed",
+      "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [
+            "enterprise-account"
+          ],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "External collaboration is a separate access and data-flow decision from membership.",
+      "tradeoff": "Partner work needs a clear exception and review path.",
+      "prerequisites": "Repository classification and an external collaborator approval owner.",
+      "consequences": "Unbounded forks can widen where source and secrets may be copied.",
+      "scope": "Organization",
+      "role": "Organization owner",
+      "applyMethod": "Organization member, fork, and collaborator settings",
+      "influence": "Protective",
+      "rolloutBand": "Moderate",
+      "ongoingBand": "Moderate",
+      "sources": [
+        {
+          "label": "Managing outside collaborators",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-outside-collaborators"
+        },
+        {
+          "label": "safe-settings",
+          "tier": "Worked example · adaptable",
+          "url": "https://github.com/github-community-projects/safe-settings"
+        }
+      ]
+    },
+    {
+      "order": 9,
+      "id": "secret-protection-configuration",
+      "domain": "Code security",
+      "title": "Secret Protection configuration coverage",
+      "selected": "baseline-all",
+      "desiredState": {
+        "id": "baseline-all",
+        "label": "Baseline on all eligible repos",
+        "description": "Apply a standard configuration with exceptions tracked."
+      },
+      "recommendedState": {
+        "id": "baseline-all",
+        "label": "Baseline on all eligible repos"
+      },
+      "disposition": "Recommended",
+      "reviewStatus": "reviewed",
+      "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [],
+          "anyOf": [
+            "secret-scanning"
+          ],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": true,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "A visible coverage plan makes Secret Protection rollout ownership and exceptions explicit, independent of Code Security.",
+      "tradeoff": "Broad defaults create alert and remediation demand that must be staffed.",
+      "prerequisites": "Repository inventory, service ownership, and a triage operating model.",
+      "consequences": "Opt-in delivery can leave critical repositories without expected secret-scanning coverage.",
+      "scope": "Enterprise or organization",
+      "role": "Security manager / organization owner",
+      "applyMethod": "Security configurations and rollout tracking",
+      "influence": "Protective",
+      "rolloutBand": "High",
+      "ongoingBand": "High",
+      "sources": [
+        {
+          "label": "Security configurations",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/code-security/how-tos/secure-at-scale/configure-organization-security/establish-complete-coverage/apply-custom-configuration"
+        },
+        {
+          "label": "GitHub Well-Architected",
+          "tier": "Well-Architected · principles",
+          "url": "https://learn.github.com/well-architected/"
+        }
+      ]
+    },
+    {
+      "order": 10,
+      "id": "secret-scanning-push-protection",
+      "domain": "Code security",
+      "title": "Secret scanning and push protection",
+      "selected": "scan-push",
+      "desiredState": {
+        "id": "scan-push",
+        "label": "Scanning + push protection",
+        "description": "Detect secrets and block likely accidental commits."
+      },
+      "recommendedState": {
+        "id": "scan-push",
+        "label": "Scanning + push protection"
+      },
+      "disposition": "Recommended",
+      "reviewStatus": "reviewed",
+      "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [],
+          "anyOf": [
+            "secret-scanning"
+          ],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": true,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "Preventing likely secrets at commit time reduces downstream exposure response work.",
+      "tradeoff": "Developers need a documented bypass and false-positive support route.",
+      "prerequisites": "Secret response owner, developer communication, and bypass audit review.",
+      "consequences": "Scan-only detects a secret after it may already be in history.",
+      "scope": "Organization and repositories",
+      "role": "Security manager",
+      "applyMethod": "Code security settings and security configuration",
+      "influence": "Protective",
+      "rolloutBand": "Moderate",
+      "ongoingBand": "Moderate",
+      "sources": [
+        {
+          "label": "Push protection",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/code-security/how-tos/secure-your-secrets/work-with-leak-prevention/push-protection-on-the-command-line"
+        },
+        {
+          "label": "GitHub Well-Architected",
+          "tier": "Well-Architected · principles",
+          "url": "https://learn.github.com/well-architected/"
+        }
+      ]
+    },
+    {
+      "order": 11,
+      "id": "code-security-configuration",
+      "domain": "Code security",
+      "title": "Code Security configuration coverage",
+      "selected": "baseline-all",
+      "desiredState": {
+        "id": "baseline-all",
+        "label": "Baseline on all eligible repos",
+        "description": "Apply a standard configuration with exceptions tracked."
+      },
+      "recommendedState": {
+        "id": "baseline-all",
+        "label": "Baseline on all eligible repos"
+      },
+      "disposition": "Recommended",
+      "reviewStatus": "reviewed",
+      "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [],
+          "anyOf": [
+            "code-scanning"
+          ],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": true,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "A visible coverage plan makes Code Security rollout ownership and exceptions explicit, independent of Secret Protection.",
+      "tradeoff": "Broad defaults create alert and remediation demand that must be staffed.",
+      "prerequisites": "Repository inventory, service ownership, and a triage operating model.",
+      "consequences": "Opt-in delivery can leave critical repositories without expected code-scanning coverage.",
+      "scope": "Enterprise or organization",
+      "role": "Security manager / organization owner",
+      "applyMethod": "Security configurations and rollout tracking",
+      "influence": "Protective",
+      "rolloutBand": "High",
+      "ongoingBand": "High",
+      "sources": [
+        {
+          "label": "Security configurations",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/code-security/how-tos/secure-at-scale/configure-organization-security/establish-complete-coverage/apply-custom-configuration"
+        },
+        {
+          "label": "GitHub Well-Architected",
+          "tier": "Well-Architected · principles",
+          "url": "https://learn.github.com/well-architected/"
+        }
+      ]
+    },
+    {
+      "order": 12,
+      "id": "code-scanning-setup",
+      "domain": "Code security",
+      "title": "Code scanning default setup",
+      "selected": "default-setup-all",
+      "desiredState": {
+        "id": "default-setup-all",
+        "label": "Default setup on all eligible repos",
+        "description": "Enable CodeQL default setup broadly with exceptions tracked."
+      },
+      "recommendedState": {
+        "id": "default-setup-all",
+        "label": "Default setup on all eligible repos"
+      },
+      "disposition": "Recommended",
+      "reviewStatus": "reviewed",
+      "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [],
+          "anyOf": [
+            "code-scanning"
+          ],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": true,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "Default setup gives repositories working CodeQL analysis without hand-authored workflow maintenance.",
+      "tradeoff": "Advanced setup is sometimes required for custom build steps or non-default languages.",
+      "prerequisites": "Supported language inventory and a triage path for new findings.",
+      "consequences": "Advanced-only setup can leave repositories without scanning until a workflow is authored.",
+      "scope": "Organization and repositories",
+      "role": "Security manager / repository administrator",
+      "applyMethod": "Code scanning default setup at scale",
+      "influence": "Protective",
+      "rolloutBand": "Moderate",
+      "ongoingBand": "Moderate",
+      "sources": [
+        {
+          "label": "Configuring default setup for code scanning at scale",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/code-security/how-tos/secure-at-scale/configure-organization-security/configure-specific-tools/code-scanning-at-scale"
+        }
+      ]
+    },
+    {
+      "order": 13,
+      "id": "dependency-coverage",
+      "domain": "Code security",
+      "title": "Dependency graph and Dependabot",
+      "selected": "graph-alerts-updates",
+      "desiredState": {
+        "id": "graph-alerts-updates",
+        "label": "Graph + alerts + updates",
+        "description": "Establish discovery and managed update cadence."
+      },
+      "recommendedState": {
+        "id": "graph-alerts-updates",
+        "label": "Graph + alerts + updates"
+      },
+      "disposition": "Recommended",
+      "reviewStatus": "reviewed",
+      "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [
+            "dependency-graph",
+            "dependabot-alerts"
+          ],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "Dependency visibility without ownership and updates yields an unmanaged alert backlog. This baseline stays available regardless of paid Secret Protection or Code Security licensing.",
+      "tradeoff": "Automated updates require CI health and dependable ownership.",
+      "prerequisites": "Dependency owners, tested CI, and severity routing.",
+      "consequences": "Unmanaged Dependabot alerts can become noisy and lose urgency.",
+      "scope": "Organization and repositories",
+      "role": "Security manager / repository administrator",
+      "applyMethod": "Code security and repository Dependabot settings",
+      "influence": "Protective",
+      "rolloutBand": "Moderate",
+      "ongoingBand": "High",
+      "sources": [
+        {
+          "label": "Dependabot alerts",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/code-security/dependabot/dependabot-alerts/about-dependabot-alerts"
+        },
+        {
+          "label": "Dependabot version updates",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/about-dependabot-version-updates"
+        }
+      ]
+    },
+    {
+      "order": 14,
+      "id": "premium-dependabot",
+      "domain": "Code security",
+      "title": "Premium Dependabot triage and autofix",
+      "selected": "auto-triage-managed",
+      "desiredState": {
+        "id": "auto-triage-managed",
+        "label": "Managed auto-triage rules + reviewed exceptions",
+        "description": "Curate custom auto-triage rules with a periodic exception review."
+      },
+      "recommendedState": {
+        "id": "auto-triage-managed",
+        "label": "Managed auto-triage rules + reviewed exceptions"
+      },
+      "disposition": "Recommended",
+      "reviewStatus": "reviewed",
+      "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [
+            "code-security"
+          ],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "Auto-triage rules reduce alert noise, but require ownership so exceptions do not hide real risk.",
+      "tradeoff": "Custom rules need periodic review or they can mask newly relevant alerts.",
+      "prerequisites": "A licensed Code Security configuration and a named Dependabot alert owner.",
+      "consequences": "Manual-only triage does not scale once dependency alert volume grows.",
+      "scope": "Organization and repositories",
+      "role": "Security manager",
+      "applyMethod": "Dependabot auto-triage rules",
+      "influence": "Enabling",
+      "rolloutBand": "Low",
+      "ongoingBand": "Moderate",
+      "sources": [
+        {
+          "label": "Dependabot auto-triage rules",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/code-security/concepts/supply-chain-security/dependabot-auto-triage-rules"
+        },
+        {
+          "label": "Customizing auto-triage rules",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/manage-your-dependency-security/auto-triage-dependabot-alerts"
+        }
+      ]
+    },
+    {
+      "order": 15,
+      "id": "allowed-actions",
+      "domain": "Actions & supply chain",
+      "title": "Allowed Actions policy",
+      "selected": "verified-pinned",
+      "desiredState": {
+        "id": "verified-pinned",
+        "label": "Verified creators + SHA pinning",
+        "description": "Allow a curated set with immutable action references."
+      },
+      "recommendedState": {
+        "id": "verified-pinned",
+        "label": "Verified creators + SHA pinning"
+      },
+      "disposition": "Recommended",
+      "reviewStatus": "reviewed",
+      "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [
+            "actions",
+            "actions-planning"
+          ],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "Workflow actions are executable third-party dependencies and need a deliberate trust boundary.",
+      "tradeoff": "Pinning and curation create maintenance work for platform teams.",
+      "prerequisites": "An approved action catalog and update process.",
+      "consequences": "Open policy broadens the dependency attack surface of CI workloads.",
+      "scope": "Enterprise or organization",
+      "role": "Actions administrator",
+      "applyMethod": "Actions policy and policy-as-code adapter",
+      "influence": "Protective",
+      "rolloutBand": "Moderate",
+      "ongoingBand": "Moderate",
+      "sources": [
+        {
+          "label": "Allowed actions",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/organizations/managing-organization-settings/disabling-or-limiting-github-actions-for-your-organization"
+        },
+        {
+          "label": "GitHub Well-Architected",
+          "tier": "Well-Architected · principles",
+          "url": "https://learn.github.com/well-architected/"
+        }
+      ]
+    },
+    {
+      "order": 16,
+      "id": "workflow-token",
+      "domain": "Actions & supply chain",
+      "title": "Workflow token default",
+      "selected": "read",
+      "desiredState": {
+        "id": "read",
+        "label": "Read-only by default",
+        "description": "Workflows elevate only the permissions they need."
+      },
+      "recommendedState": {
+        "id": "read",
+        "label": "Read-only by default"
+      },
+      "disposition": "Recommended",
+      "reviewStatus": "reviewed",
+      "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [
+            "actions",
+            "actions-planning"
+          ],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "Least-privilege workflow defaults limit the blast radius of compromised workflow code.",
+      "tradeoff": "Existing workflows may need explicit permission declarations.",
+      "prerequisites": "A workflow inventory and validation in representative repositories.",
+      "consequences": "Changing the default can break releases if not piloted.",
+      "scope": "Enterprise, organization, repository",
+      "role": "Actions administrator / repository maintainer",
+      "applyMethod": "Actions settings and workflow YAML changes",
+      "influence": "Protective",
+      "rolloutBand": "Moderate",
+      "ongoingBand": "Low",
+      "sources": [
+        {
+          "label": "Automatic token authentication",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication"
+        },
+        {
+          "label": "GitHub Well-Architected",
+          "tier": "Well-Architected · principles",
+          "url": "https://learn.github.com/well-architected/"
+        }
+      ]
+    },
+    {
+      "order": 17,
+      "id": "runner-network",
+      "domain": "Actions & supply chain",
+      "title": "Runner and network boundary",
+      "selected": "segmented",
+      "desiredState": {
+        "id": "segmented",
+        "label": "Segmented runners + controlled egress",
+        "description": "Separate trust zones and define network policy."
+      },
+      "recommendedState": {
+        "id": "segmented",
+        "label": "Segmented runners + controlled egress"
+      },
+      "disposition": "Recommended",
+      "reviewStatus": "reviewed",
+      "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [
+            "actions",
+            "actions-planning"
+          ],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "Runner choice is a workload trust-boundary decision, not only a capacity decision.",
+      "tradeoff": "Self-hosted runners enable private connectivity but demand patching and isolation ownership.",
+      "prerequisites": "Workload classification, network owner, and runner lifecycle plan.",
+      "consequences": "Shared self-hosted runners can expose credentials or network paths across workloads.",
+      "scope": "Enterprise and organization",
+      "role": "Actions administrator / infrastructure owner",
+      "applyMethod": "Runner groups, network design, and enterprise Actions settings",
+      "influence": "Guardrail",
+      "rolloutBand": "High",
+      "ongoingBand": "High",
+      "sources": [
+        {
+          "label": "Self-hosted runners",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/actions/concepts/runners/self-hosted-runners"
+        },
+        {
+          "label": "GitHub Well-Architected",
+          "tier": "Well-Architected · principles",
+          "url": "https://learn.github.com/well-architected/"
+        }
+      ]
+    },
+    {
+      "order": 18,
+      "id": "audit-streaming",
+      "domain": "Audit visibility",
+      "title": "Audit retention and streaming",
+      "selected": "stream-siem",
+      "desiredState": {
+        "id": "stream-siem",
+        "label": "Stream to SIEM + review ownership",
+        "description": "Export enterprise events with named detection ownership."
+      },
+      "recommendedState": {
+        "id": "stream-siem",
+        "label": "Stream to SIEM + review ownership"
+      },
+      "disposition": "Recommended",
+      "reviewStatus": "reviewed",
+      "selectionSource": "generated-recommendation",
+      "applicability": {
+        "status": "applicable",
+        "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",
+        "requirements": {
+          "allOf": [
+            "enterprise-audit",
+            "audit-planning"
+          ],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      },
+      "rationale": "A stream only helps when a team owns intake, retention, and meaningful detection.",
+      "tradeoff": "Streaming adds integration and data-retention responsibilities.",
+      "prerequisites": "SIEM endpoint, schema ownership, and incident routing.",
+      "consequences": "On-demand audit review lengthens investigation and evidence collection time.",
+      "scope": "Enterprise",
+      "role": "Enterprise owner / security operations",
+      "applyMethod": "Audit log streaming configuration",
+      "influence": "Protective",
+      "rolloutBand": "Moderate",
+      "ongoingBand": "Moderate",
+      "sources": [
+        {
+          "label": "Streaming the audit log",
+          "tier": "GitHub Docs · mechanics",
+          "url": "https://docs.github.com/en/enterprise-cloud@latest/admin/monitoring-activity-in-your-enterprise/reviewing-audit-logs-for-your-enterprise/streaming-the-audit-log-for-your-enterprise"
+        },
+        {
+          "label": "GitHub Well-Architected",
+          "tier": "Well-Architected · principles",
+          "url": "https://learn.github.com/well-architected/"
+        }
+      ]
     }
   ],
   "excludedDecisions": [
     {
-      "id": "copilot-enterprise-knowledge-bases",
-      "domain": "Copilot governance",
-      "title": "Configure Copilot Enterprise knowledge bases",
+      "id": "code-quality-targeting",
+      "domain": "Code quality",
+      "title": "Code Quality targeting",
       "applicability": {
         "status": "excluded",
-        "reason": "Excluded by catalog availability: missing required capabilities `copilot-enterprise`.",
+        "reason": "Excluded by catalog availability: missing required capabilities `code-quality`.",
         "requirements": {
-          "allOf": ["copilot-enterprise"],
+          "allOf": [
+            "code-quality"
+          ],
           "anyOf": [],
           "noneOf": [],
-          "missingAllOf": ["copilot-enterprise"],
+          "missingAllOf": [
+            "code-quality"
+          ],
           "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      }
+    },
+    {
+      "id": "code-quality-setup-findings",
+      "domain": "Code quality",
+      "title": "Code Quality setup and findings triage",
+      "applicability": {
+        "status": "excluded",
+        "reason": "Excluded by catalog availability: missing required capabilities `code-quality`.",
+        "requirements": {
+          "allOf": [
+            "code-quality"
+          ],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [
+            "code-quality"
+          ],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      }
+    },
+    {
+      "id": "code-quality-coverage",
+      "domain": "Code quality",
+      "title": "Code Quality coverage rollout",
+      "applicability": {
+        "status": "excluded",
+        "reason": "Excluded by catalog availability: missing required capabilities `code-quality`.",
+        "requirements": {
+          "allOf": [
+            "code-quality"
+          ],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [
+            "code-quality"
+          ],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      }
+    },
+    {
+      "id": "code-quality-merge-gates",
+      "domain": "Code quality",
+      "title": "Code Quality merge gate policy",
+      "applicability": {
+        "status": "excluded",
+        "reason": "Excluded by catalog availability: missing required capabilities `code-quality`.",
+        "requirements": {
+          "allOf": [
+            "code-quality"
+          ],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": [
+            "code-quality"
+          ],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      }
+    },
+    {
+      "id": "copilot-license-topology",
+      "domain": "Copilot governance",
+      "title": "Copilot license topology",
+      "applicability": {
+        "status": "excluded",
+        "reason": "Excluded by catalog availability: requires at least one of `copilot-business`, `copilot-enterprise`.",
+        "requirements": {
+          "allOf": [],
+          "anyOf": [
+            "copilot-business",
+            "copilot-enterprise"
+          ],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": false,
+          "presentNoneOf": []
+        }
+      }
+    },
+    {
+      "id": "copilot-public-code",
+      "domain": "Copilot governance",
+      "title": "Public-code matching policy",
+      "applicability": {
+        "status": "excluded",
+        "reason": "Excluded by catalog availability: requires at least one of `copilot-business`, `copilot-enterprise`.",
+        "requirements": {
+          "allOf": [],
+          "anyOf": [
+            "copilot-business",
+            "copilot-enterprise"
+          ],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": false,
+          "presentNoneOf": []
+        }
+      }
+    },
+    {
+      "id": "copilot-content-exclusion",
+      "domain": "Copilot governance",
+      "title": "Content exclusion policy",
+      "applicability": {
+        "status": "excluded",
+        "reason": "Excluded by catalog availability: requires at least one of `copilot-business`, `copilot-enterprise`.",
+        "requirements": {
+          "allOf": [],
+          "anyOf": [
+            "copilot-business",
+            "copilot-enterprise"
+          ],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": false,
+          "presentNoneOf": []
+        }
+      }
+    },
+    {
+      "id": "copilot-model-policy",
+      "domain": "Copilot governance",
+      "title": "Model and feature policy",
+      "applicability": {
+        "status": "excluded",
+        "reason": "Excluded by catalog availability: requires at least one of `copilot-business`, `copilot-enterprise`.",
+        "requirements": {
+          "allOf": [],
+          "anyOf": [
+            "copilot-business",
+            "copilot-enterprise"
+          ],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": false,
+          "presentNoneOf": []
+        }
+      }
+    },
+    {
+      "id": "copilot-usage-metrics",
+      "domain": "Copilot governance",
+      "title": "Usage-metrics policy",
+      "applicability": {
+        "status": "excluded",
+        "reason": "Excluded by catalog availability: requires at least one of `copilot-business`, `copilot-enterprise`.",
+        "requirements": {
+          "allOf": [],
+          "anyOf": [
+            "copilot-business",
+            "copilot-enterprise"
+          ],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": false,
+          "presentNoneOf": []
+        }
+      }
+    },
+    {
+      "id": "cost-center-mapping",
+      "domain": "Copilot cost controls",
+      "title": "Copilot cost center mapping",
+      "applicability": {
+        "status": "excluded",
+        "reason": "Excluded by catalog availability: requires at least one of `copilot-business`, `copilot-enterprise`.",
+        "requirements": {
+          "allOf": [],
+          "anyOf": [
+            "copilot-business",
+            "copilot-enterprise"
+          ],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": false,
+          "presentNoneOf": []
+        }
+      }
+    },
+    {
+      "id": "cculb",
+      "domain": "Copilot cost controls",
+      "title": "Copilot cost center budget",
+      "applicability": {
+        "status": "excluded",
+        "reason": "Excluded by catalog availability: requires at least one of `copilot-business`, `copilot-enterprise`.",
+        "requirements": {
+          "allOf": [],
+          "anyOf": [
+            "copilot-business",
+            "copilot-enterprise"
+          ],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": false,
+          "presentNoneOf": []
+        }
+      }
+    },
+    {
+      "id": "included-usage-cap",
+      "domain": "Copilot cost controls",
+      "title": "Included usage controls for cost centers",
+      "applicability": {
+        "status": "excluded",
+        "reason": "Excluded by catalog availability: requires at least one of `copilot-business`, `copilot-enterprise`.",
+        "requirements": {
+          "allOf": [],
+          "anyOf": [
+            "copilot-business",
+            "copilot-enterprise"
+          ],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": false,
+          "presentNoneOf": []
+        }
+      }
+    },
+    {
+      "id": "enterprise-budget-backstop",
+      "domain": "Copilot cost controls",
+      "title": "Enterprise budget backstop",
+      "applicability": {
+        "status": "excluded",
+        "reason": "Excluded by catalog availability: requires at least one of `copilot-business`, `copilot-enterprise`.",
+        "requirements": {
+          "allOf": [],
+          "anyOf": [
+            "copilot-business",
+            "copilot-enterprise"
+          ],
+          "noneOf": [],
+          "missingAllOf": [],
+          "anyOfSatisfied": false,
           "presentNoneOf": []
         }
       }

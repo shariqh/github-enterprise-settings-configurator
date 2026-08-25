@@ -32,9 +32,11 @@ and nothing here writes anything.
 - Do not parse or interpret the Markdown handoff export, screenshots, prose
   descriptions of settings, or any other input format in v1.
 - Fail closed on missing input, non-JSON input, JSON that does not parse, JSON
-  missing `schema`, `schemaVersion`, `settings`, `readiness`, or
-  `domainProfiles`, or a `schemaVersion` other than `2`. When any of these
-  checks fail, stop and respond with exactly this request and nothing else:
+  missing `schema`, `schemaVersion`, `profile`, `capabilityContext`,
+  `readiness`, `settings` (array), `caveats` (array), `domainProfiles`
+  (array), or `excludedDecisions` (array), or a `schemaVersion` other than
+  `2`. When any of these checks fail, stop and respond with exactly this
+  request and nothing else:
   "I need a current schema-v2 JSON desired-state export from the configurator
   to interpret results. Please export JSON from the Review step and share
   that file."
@@ -56,9 +58,19 @@ and nothing here writes anything.
 ## Interpretation contract
 
 Use the exported fields as ground truth. Do not re-derive `readiness`,
-`settings[].role`, `settings[].scope`, `settings[].disposition`,
-`settings[].reviewStatus`, `caveats`, `domainProfiles`, or
-`excludedDecisions[].applicability` — read and cite them.
+`profile`, `capabilityContext` (including `capabilityContext.profileWarnings`
+and `capabilityContext.profileErrors`), `settings[].role`,
+`settings[].scope`, `settings[].disposition`, `settings[].reviewStatus`,
+`caveats`, `domainProfiles`, or `excludedDecisions[].applicability` — read and
+cite them.
+
+`readiness.status`/`readiness.artifactStatus` is a **plan-level** rollup
+("draft" until every applicable editable decision is reviewed, then
+"ready-for-handoff"/"final"). `settings[].reviewStatus` is a separate,
+**decision-level** field (`not-reviewed`, `reviewed`, or `derived` for each
+individual decision). Never collapse these into one status: a plan can be
+"draft" while most of its individual decisions are already `reviewed`, and you
+must report both levels distinctly.
 
 Apply these canonical meanings, and correct any looser language a human uses:
 
@@ -76,23 +88,33 @@ Apply these canonical meanings, and correct any looser language a human uses:
   must be surfaced to the SE and the customer, not treated as fine print.
 - **High rollout band or ongoing band:** operational load, ownership,
   enablement, and sequencing signals — not a security grade.
-- **Foundational decision (`foundational: true` settings, or
-  `foundationLimited` in `domainProfiles`):** resolve or explicitly accept the
-  upstream choice before interpreting that domain's downstream posture.
+- **Foundationally limited domain (`domainProfiles[].foundationLimited`):** a
+  schema-v2 export does not include a `foundational` flag on individual
+  `settings[]` entries and does not identify which exact decision caused a
+  domain's limit. When `domainProfiles[].foundationLimited` is `true`, report
+  only that the named **domain** is foundation-limited, state plainly that
+  the export does not identify the specific limiting decision, and direct the
+  SE to review that domain's decisions (and, if needed, the catalog) with the
+  customer rather than naming or guessing a specific setting.
 
 ## Required output
 
 Produce exactly these eight sections, grounded in the exact export fields you
 cite:
 
-1. **Result status and input confidence** — the schema/version check result,
-   `readiness.status`/`readiness.artifactStatus`, and any input limitations.
+1. **Result status and input confidence** — the schema/version check result;
+   the **plan-level** `readiness.status`/`readiness.artifactStatus`; and, kept
+   separate, how many decisions carry each **decision-level**
+   `settings[].reviewStatus` (`not-reviewed`/`reviewed`/`derived`); plus any
+   input limitations.
 2. **What appears settled** — reviewed and derived decisions, with IDs.
 3. **What remains open** — grouped by reason (`not-reviewed`, `Override`,
    excluded/default-no, caveat), each citing the exact export field/value.
-4. **Foundational decisions to address first** — foundational or
-   domain-limiting decisions from `settings`/`domainProfiles`, ordered before
-   other open items.
+4. **Foundationally limited domains to address first** — domains from
+   `domainProfiles` where `foundationLimited` is `true`, ordered before other
+   open items. State that the export does not identify the specific limiting
+   decision and direct the SE to review that domain's decisions with the
+   customer.
 5. **Prioritized SE actions** — for each open item, one of: validate,
    discover, deep-dive, pilot/phase, or escalate.
 6. **Generic owner roles** — a role (for example, identity administrator,
@@ -100,9 +122,9 @@ cite:
    person, for each action.
 7. **Questions for the next customer meeting** — concrete, grounded in the
    open items above.
-8. **Evidence and assumptions to recheck** — `caveats`, profile warnings, and
-   any catalog source tier below "GitHub Docs · mechanics" that a material
-   conclusion relied on.
+8. **Evidence and assumptions to recheck** — `caveats`,
+   `capabilityContext.profileWarnings`, and any catalog source tier below
+   "GitHub Docs · mechanics" that a material conclusion relied on.
 
 ## Guardrails
 

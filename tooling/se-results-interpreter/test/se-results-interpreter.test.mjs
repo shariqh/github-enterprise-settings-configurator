@@ -51,11 +51,24 @@ test("agent is manual-only and mechanically read/search-only", () => {
   assertIncludes(agentFlat, "it never proposes a patch to this repository");
 });
 
-test("agent fails closed on missing or incompatible input", () => {
+test("agent fails closed on missing or incompatible input, including the required top-level export fields", () => {
   assertIncludes(agentFlat, "Accept only a single, current schema-v2 JSON desired-state export");
   assertIncludes(agentFlat, "schema.version`/`schemaVersion` must equal `2`");
   assertIncludes(agentFlat, "Do not parse or interpret the Markdown handoff export");
   assertIncludes(agentFlat, "Fail closed on missing input, non-JSON input");
+  for (const requiredField of [
+    "`schema`",
+    "`schemaVersion`",
+    "`profile`",
+    "`capabilityContext`",
+    "`readiness`",
+    "`settings` (array)",
+    "`caveats` (array)",
+    "`domainProfiles` (array)",
+    "`excludedDecisions` (array)",
+  ]) {
+    assertIncludes(agentFlat, requiredField, `input contract must require ${requiredField}`);
+  }
   assertIncludes(
     agentFlat,
     "I need a current schema-v2 JSON desired-state export from the configurator",
@@ -70,7 +83,13 @@ test("agent enforces the redacted-context privacy contract", () => {
   assertIncludes(agentFlat, "Never infer a customer's identity, contract terms, or facts");
 });
 
-test("agent applies the canonical interpretation contract", () => {
+test("agent distinguishes plan-level readiness from decision-level review status", () => {
+  assertIncludes(agentFlat, "is a **plan-level** rollup");
+  assertIncludes(agentFlat, "**decision-level** field");
+  assertIncludes(agentFlat, "Never collapse these into one status");
+});
+
+test("agent applies the canonical interpretation contract without inventing a foundational-setting field", () => {
   for (const term of [
     "Draft / not-reviewed",
     "Ready for handoff / reviewed",
@@ -78,20 +97,27 @@ test("agent applies the canonical interpretation contract", () => {
     "Excluded / derived default-no",
     "Caveat",
     "High rollout band or ongoing band",
-    "Foundational decision",
+    "Foundationally limited domain",
   ]) {
     assertIncludes(agent, term, `missing interpretation term: ${term}`);
   }
   assertIncludes(agentFlat, 'not automatically "never"');
   assertIncludes(agentFlat, "not a security grade");
+
+  // schema-v2 exports never carry a `foundational` flag on individual
+  // settings[] entries; the agent must not claim otherwise or promise to
+  // name the exact limiting decision for a foundation-limited domain.
+  assertIncludes(agentFlat, "does not include a `foundational` flag on individual");
+  assertIncludes(agentFlat, "does not identify which exact decision caused a domain's limit");
+  assert.equal(agentFlat.includes("`foundational: true`"), false);
 });
 
-test("agent requires the eight-section output contract", () => {
+test("agent requires the eight-section output contract, citing capabilityContext.profileWarnings by exact path", () => {
   const required = [
     "Result status and input confidence",
     "What appears settled",
     "What remains open",
-    "Foundational decisions to address first",
+    "Foundationally limited domains to address first",
     "Prioritized SE actions",
     "Generic owner roles",
     "Questions for the next customer meeting",
@@ -102,6 +128,7 @@ test("agent requires the eight-section output contract", () => {
   }
   assertIncludes(agentFlat, "validate, discover, deep-dive, pilot/phase, or escalate");
   assertIncludes(agentFlat, "never a named person");
+  assertIncludes(agentFlat, "capabilityContext.profileWarnings");
 });
 
 test("agent forbids the prohibited product and legal claims", () => {
@@ -117,10 +144,12 @@ test("agent forbids the prohibited product and legal claims", () => {
   }
 });
 
-test("documentation gives a synthetic invocation example only", () => {
-  assertIncludes(docFlat, "entirely synthetic");
+test("documentation gives a genuinely valid, synthetic invocation example only", () => {
+  assertIncludes(docFlat, "genuinely valid and current");
   assertIncludes(docFlat, "se-results-interpreter");
   assertIncludes(docFlat, "pnpm se-results-interpreter:test");
+  assertIncludes(docFlat, "parseImportedPlan");
+  assertIncludes(docFlat, "does not identify which specific decision in that domain caused the limit");
   // The doc's illustrative JSON and prose must never carry a real customer
   // name, transcript reference, or contract detail alongside the export.
   for (const forbidden of ["transcript excerpt", "contract value", "account executive"]) {
@@ -128,15 +157,28 @@ test("documentation gives a synthetic invocation example only", () => {
   }
 });
 
-test("synthetic fixture is a valid schema-v2 export the agent would accept", () => {
+test("synthetic fixture declares the required top-level export fields and a real profile/capability shape", () => {
   assert.equal(fixture.schema.name, "github-enterprise-settings-configurator.desired-state");
   assert.equal(fixture.schema.version, 2);
   assert.equal(fixture.schemaVersion, 2);
-  assert.ok(Array.isArray(fixture.settings) && fixture.settings.length > 0);
+  assert.ok(fixture.profile);
+  assert.ok(fixture.capabilityContext);
   assert.ok(fixture.readiness);
-  assert.ok(Array.isArray(fixture.domainProfiles) && fixture.domainProfiles.length > 0);
+  assert.ok(Array.isArray(fixture.settings) && fixture.settings.length > 0);
   assert.ok(Array.isArray(fixture.caveats));
-  assert.ok(Array.isArray(fixture.excludedDecisions));
+  assert.ok(Array.isArray(fixture.domainProfiles) && fixture.domainProfiles.length > 0);
+  assert.ok(Array.isArray(fixture.excludedDecisions) && fixture.excludedDecisions.length > 0);
+
+  // A real, current, capability-compatible profile: GHES only supports
+  // instance accounts and cannot license Copilot (capabilities.ts).
+  assert.equal(fixture.profile.deployment, "ghes");
+  assert.equal(fixture.profile.accountModel, "instance");
+  assert.equal(fixture.profile.licensedProducts.copilot, "none");
+
+  // A profile warning is present and must be citable at the exact path the
+  // agent is required to reference.
+  assert.ok(Array.isArray(fixture.capabilityContext.profileWarnings));
+  assert.ok(fixture.capabilityContext.profileWarnings.length > 0);
 
   const reviewStatuses = new Set(fixture.settings.map((item) => item.reviewStatus));
   assert.ok(reviewStatuses.has("reviewed"));
@@ -150,8 +192,14 @@ test("synthetic fixture is a valid schema-v2 export the agent would accept", () 
     true,
   );
 
+  // No exported setting carries a `foundational` field — this is the exact
+  // gap the agent's contract is written to respect.
+  for (const setting of fixture.settings) {
+    assert.equal(Object.hasOwn(setting, "foundational"), false);
+  }
+
   // Guard against accidental real customer content in the checked-in fixture.
-  for (const forbidden of ["transcript", "@", "contract number", "contract value"]) {
+  for (const forbidden of ["transcript", "contract number", "contract value", "account executive"]) {
     assert.equal(
       fixtureText.toLowerCase().includes(forbidden),
       false,
