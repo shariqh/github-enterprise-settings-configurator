@@ -23,3 +23,6 @@ AGENTS.md                     @shariqh
 
 # Product-watch automation maintenance surface.
 /tooling/product-watch/       @shariqh
+
+# SE results interpreter agent enforcement surface.
+/tooling/se-results-interpreter/  @shariqh
