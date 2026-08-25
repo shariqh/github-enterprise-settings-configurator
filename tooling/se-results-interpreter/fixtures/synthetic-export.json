@@ -1,0 +1,151 @@
+{
+  "schema": {
+    "name": "github-enterprise-settings-configurator.desired-state",
+    "version": 2,
+    "compatibility": "Additive schema v2; importers may rely on profile, intent, priorities, settings[].id/selected, and reviewedSettingIds."
+  },
+  "schemaVersion": 2,
+  "artifactType": "machine-readable desired-state contract",
+  "artifactStatus": "draft",
+  "readiness": {
+    "status": "draft",
+    "artifactStatus": "draft",
+    "applicableEditableDecisionCount": 3,
+    "reviewedDecisionCount": 1,
+    "remainingDecisionCount": 2,
+    "isReady": false
+  },
+  "generatedAt": "2026-01-15T00:00:00.000Z",
+  "purpose": "Preserve a versioned desired-state plan for configurator re-entry and authorized downstream adapters.",
+  "scope": "Desired-state configurator plan; not observed tenant state.",
+  "limitations": [
+    "Does not inspect, validate, or change a GitHub tenant.",
+    "Does not establish compliance or confirm product availability beyond the catalog evidence and resolved profile.",
+    "Application outcomes must be validated by an authorized operator.",
+    "GitHub Enterprise Server recommendations target the latest generally available release; confirm the deployed release before implementation."
+  ],
+  "profile": {
+    "deployment": "ghes",
+    "basePlan": "enterprise",
+    "accountModel": "managed",
+    "authentication": "saml",
+    "provisioning": "scim",
+    "repositoryVisibility": "private-internal",
+    "currentState": "existing",
+    "licensedProducts": {
+      "secretProtection": "licensed",
+      "codeSecurity": "licensed",
+      "codeQuality": "unknown",
+      "copilot": "business"
+    },
+    "planningScope": { "actions": true, "audit": true }
+  },
+  "intent": { "guardrailStrength": 2, "rolloutPace": 1, "operationalCapacity": 1 },
+  "priorities": ["security-rollout"],
+  "summary": {
+    "catalogDecisionCount": 24,
+    "applicableDecisionCount": 3,
+    "applicableEditableDecisionCount": 3,
+    "excludedDecisionCount": 1,
+    "reviewedDecisionCount": 1,
+    "derivedDecisionCount": 0,
+    "unreviewedDecisionCount": 2,
+    "remainingDecisionCount": 2,
+    "overrideCount": 1
+  },
+  "caveats": [
+    {
+      "code": "unreviewed-decisions",
+      "message": "2 applicable editable decisions have not been reviewed; values may be generated recommendations or explicit selections.",
+      "decisionIds": ["identity-saml-enforcement", "actions-runner-policy"]
+    },
+    {
+      "code": "default-no-exclusions",
+      "message": "1 catalog decision is excluded by the resolved capability model. Exclusion is a default-no planning result, not live product or tenant validation.",
+      "decisionIds": ["copilot-enterprise-knowledge-bases"]
+    }
+  ],
+  "reviewedSettingIds": ["secret-scanning-push-protection"],
+  "domainProfiles": [
+    {
+      "domain": "Identity & administration",
+      "posture": 0.42,
+      "postureLabel": "Moderate",
+      "foundationLimited": true,
+      "rolloutLoad": 0.55,
+      "rolloutBand": "Moderate",
+      "ongoingLoad": 0.4,
+      "ongoingBand": "Moderate"
+    },
+    {
+      "domain": "Code security",
+      "posture": 0.81,
+      "postureLabel": "Higher",
+      "foundationLimited": false,
+      "rolloutLoad": 0.3,
+      "rolloutBand": "Low",
+      "ongoingLoad": 0.25,
+      "ongoingBand": "Low"
+    }
+  ],
+  "settings": [
+    {
+      "order": 1,
+      "id": "identity-saml-enforcement",
+      "domain": "Identity & administration",
+      "title": "Enforce SAML single sign-on",
+      "selected": "enforced",
+      "disposition": "Recommended",
+      "reviewStatus": "not-reviewed",
+      "selectionSource": "generated-recommendation",
+      "scope": "Enterprise",
+      "role": "Identity administrator",
+      "sources": []
+    },
+    {
+      "order": 2,
+      "id": "actions-runner-policy",
+      "domain": "Actions & supply chain",
+      "title": "Restrict self-hosted runner groups",
+      "selected": "restricted-to-approved-repos",
+      "disposition": "Override",
+      "reviewStatus": "not-reviewed",
+      "selectionSource": "explicit-selection",
+      "scope": "Enterprise",
+      "role": "Platform engineering",
+      "sources": []
+    },
+    {
+      "order": 3,
+      "id": "secret-scanning-push-protection",
+      "domain": "Code security",
+      "title": "Enable secret scanning push protection",
+      "selected": "enforced",
+      "disposition": "Recommended",
+      "reviewStatus": "reviewed",
+      "selectionSource": "generated-recommendation",
+      "scope": "Organization",
+      "role": "Security lead",
+      "sources": []
+    }
+  ],
+  "excludedDecisions": [
+    {
+      "id": "copilot-enterprise-knowledge-bases",
+      "domain": "Copilot governance",
+      "title": "Configure Copilot Enterprise knowledge bases",
+      "applicability": {
+        "status": "excluded",
+        "reason": "Excluded by catalog availability: missing required capabilities `copilot-enterprise`.",
+        "requirements": {
+          "allOf": ["copilot-enterprise"],
+          "anyOf": [],
+          "noneOf": [],
+          "missingAllOf": ["copilot-enterprise"],
+          "anyOfSatisfied": null,
+          "presentNoneOf": []
+        }
+      }
+    }
+  ]
+}

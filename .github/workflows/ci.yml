@@ -51,5 +51,8 @@ jobs:
       - name: Test Copilot evaluation rules
         run: pnpm copilot-evaluation:test
 
+      - name: Test SE results interpreter agent contract
+        run: pnpm se-results-interpreter:test
+
       - name: Build and type-check
         run: pnpm build

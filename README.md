@@ -57,6 +57,7 @@ pnpm dev
 pnpm test
 pnpm product-watch:test
 pnpm copilot-evaluation:test
+pnpm se-results-interpreter:test
 pnpm lint
 pnpm build
 ```
@@ -91,11 +92,21 @@ credentialed end-to-end evaluation has run.
 
 ## Repository checks and protection
 
-The required CI check is `verify`. It runs configurator, product-watch, and
-Copilot evaluator tests, followed by lint and build/type-check. Live branch,
-Actions, security, merge, and Pages settings are maintained through the
+The required CI check is `verify`. It runs configurator, product-watch,
+Copilot evaluator, and SE results interpreter agent tests, followed by lint
+and build/type-check. Live branch, Actions, security, merge, and Pages
+settings are maintained through the
 [repository protection runbook](docs/repository-protection.md), which is the
 source of truth for applying or recovering those controls.
+
+## SE results interpretation agent
+
+The [SE results interpretation agent](docs/se-results-interpretation.md)
+(`.github/agents/se-results-interpreter.agent.md`) is a manual-only,
+mechanically read/search-only agent that gives a GitHub Solutions Engineer an
+internal, decision-ready interpretation of one current schema-v2 JSON export.
+It never inspects or changes a tenant, never edits this repository, and fails
+closed on missing, malformed, or non-JSON input.
 
 ## Non-goals
 

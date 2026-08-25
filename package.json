@@ -12,7 +12,8 @@
     "test": "vitest run src",
     "product-watch": "node tooling/product-watch/cli.mjs",
     "product-watch:test": "node --test tooling/product-watch/test/*.test.mjs",
-    "copilot-evaluation:test": "node --test tooling/copilot-evaluation/test/*.test.mjs"
+    "copilot-evaluation:test": "node --test tooling/copilot-evaluation/test/*.test.mjs",
+    "se-results-interpreter:test": "node --test tooling/se-results-interpreter/test/*.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.7.1",
