@@ -35,11 +35,43 @@ const setting = (editable = true): Setting => ({
   sources: [],
 })
 
+const twoChoiceSetting = (overrides: Partial<Setting> = {}): Setting => ({
+  id: overrides.id ?? "two-choice-setting",
+  domain: overrides.domain ?? "Code security",
+  title: overrides.title ?? "Two choice setting",
+  prompt: "Choose a value",
+  choices: [
+    { id: "strong", label: "Strong", description: "Strong" },
+    { id: "light", label: "Light", description: "Light" },
+  ],
+  recommended: "strong",
+  editable: true,
+  rationale: "Rationale",
+  tradeoff: "Tradeoff",
+  prerequisites: "Prerequisites",
+  consequences: "Consequences",
+  scope: "Enterprise",
+  role: "Enterprise owner",
+  applyMethod: "Manual",
+  influence: overrides.influence ?? "Protective",
+  foundational: overrides.foundational,
+  rolloutBand: overrides.rolloutBand ?? "Low",
+  ongoingBand: overrides.ongoingBand ?? "Low",
+  sources: [],
+})
+
 const recommended = (item: Setting): RecommendedSetting => ({
   setting: item,
   recommended: "strong",
   selected: "strong",
   disposition: "Recommended",
+})
+
+const override = (item: Setting): RecommendedSetting => ({
+  setting: item,
+  recommended: "strong",
+  selected: "light",
+  disposition: "Override",
 })
 
 const renderReview = (
@@ -104,5 +136,68 @@ describe("Review export choices", () => {
     expect(html).toContain("copilot-license-topology")
     expect(html).toContain("Excluded by catalog availability")
     expect(html).toContain("not live tenant or product validation")
+  })
+})
+
+describe("Review customer outcome and next-step story", () => {
+  it("presents all four new framing headings without duplicating existing lists", () => {
+    const currentPlan = plan()
+    const html = renderReview(currentPlan, [recommended(setting())], [], "markdown")
+
+    expect(html).toContain("What this result means")
+    expect(html).toContain("What happens next")
+    expect(html).toContain("What the customer takes away")
+    expect(html).toContain("How GitHub helps")
+    expect(html).toContain("desired-state decision record")
+    expect(html).toContain("does not inspect this tenant, apply these settings, or assess compliance")
+  })
+
+  it("gives truthful draft next-step guidance when decisions remain unreviewed", () => {
+    const currentPlan = plan()
+    const html = renderReview(currentPlan, [recommended(setting())], [], "markdown")
+
+    expect(html).toContain("1 applicable editable decision still needs")
+    expect(html).toContain("Needs attention")
+    expect(html).toContain("A draft desired-state artifact")
+    expect(html).toContain("draft handoff export is available for workshop continuity")
+  })
+
+  it("gives truthful ready next-step guidance once every decision is reviewed", () => {
+    const currentPlan = plan()
+    const item = recommended(setting())
+    const html = renderReview(currentPlan, [item], [item.setting.id])
+
+    expect(html).toContain("Every applicable editable decision has already been reviewed")
+    expect(html).toContain("A reviewed desired-state artifact")
+    expect(html).toContain("ready for a final handoff export")
+  })
+
+  it("flags deliberate overrides for rationale and owner confirmation", () => {
+    const currentPlan = plan()
+    const item = override(twoChoiceSetting({ id: "override-setting" }))
+    const html = renderReview(currentPlan, [item], [item.setting.id])
+
+    expect(html).toContain("Confirm the rationale and owner for deliberate overrides")
+    expect(html).toContain("1 value differs")
+  })
+
+  it("names a foundational-limited domain without treating it as an observed gap", () => {
+    const currentPlan = plan()
+    const foundational = override(twoChoiceSetting({ id: "foundation", foundational: true }))
+    const sibling = recommended(twoChoiceSetting({ id: "sibling" }))
+    const html = renderReview(currentPlan, [foundational, sibling], [foundational.setting.id, sibling.setting.id])
+
+    expect(html).toContain("Address foundational constraints before downstream enhancements")
+    expect(html).toContain("Code security")
+    expect(html).toContain("capped by a foundational decision")
+  })
+
+  it("names a High-effort domain as a phasing candidate, never as weak security", () => {
+    const currentPlan = plan()
+    const item = recommended(twoChoiceSetting({ id: "high-effort", rolloutBand: "High" }))
+    const html = renderReview(currentPlan, [item], [item.setting.id])
+
+    expect(html).toContain("Phase or pilot high-effort work")
+    expect(html).toContain("not weak security")
   })
 })

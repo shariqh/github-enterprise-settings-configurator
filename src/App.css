@@ -1250,6 +1250,54 @@
   max-width: 500px;
 }
 
+.meaning-facts {
+  border-top: 1px solid var(--cp-border-strong);
+  display: grid;
+  margin: 0;
+}
+
+.meaning-facts > div {
+  border-bottom: 1px solid var(--cp-border);
+  display: grid;
+  gap: 4px;
+  padding: 12px 8px;
+}
+
+.meaning-facts dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.meaning-facts dd {
+  color: var(--cp-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.review-narrative > header {
+  display: block;
+}
+
+.review-narrative header p {
+  max-width: 640px;
+}
+
+.next-step-list__status {
+  display: block;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.next-step-list__status--clear {
+  color: var(--cp-success);
+}
+
+.next-step-list__status--attention {
+  color: var(--cp-warning);
+}
+
 .domain-profile-list {
   border-top: 1px solid var(--cp-border-strong);
 }
