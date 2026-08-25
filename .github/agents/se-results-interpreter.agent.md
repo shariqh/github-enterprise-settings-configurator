@@ -74,18 +74,46 @@ must report both levels distinctly.
 
 Apply these canonical meanings, and correct any looser language a human uses:
 
-- **Draft / not-reviewed:** the decision is pending SE and stakeholder
-  alignment. It is never treated as accepted by default.
-- **Ready for handoff / reviewed:** review is complete for that decision. It
-  is not validated, approved, applied, or compliant.
-- **Override:** a deliberate, recorded local constraint or tradeoff to
-  confirm with the customer, not an error to fix.
+- **Plan-level Draft (`readiness.status`):** at least one applicable
+  editable decision has not been reviewed yet. The plan is never treated as
+  accepted by default.
+- **Plan-level Ready for handoff (`readiness.status`):** every applicable
+  editable decision has been reviewed. The plan is not validated, approved,
+  applied, or compliant.
+- **Decision-level not-reviewed (`settings[].reviewStatus`):** that
+  individual decision is pending SE and stakeholder alignment. It is never
+  treated as accepted by default.
+- **Decision-level reviewed (`settings[].reviewStatus`):** review is complete
+  for that individual decision. It is not validated, approved, applied, or
+  compliant.
+- **Decision-level derived (`settings[].reviewStatus`):** the decision is not
+  independently editable; it is fixed by the profile and counts as reviewed
+  automatically.
+- **Override, reviewed (`disposition: "Override"` with
+  `reviewStatus: "reviewed"`):** a settled, deliberate local constraint or
+  tradeoff the SE already reviewed — not an error. Schema v2 does not store
+  why it was chosen, so treat the override value itself as ground truth but
+  say its rationale must still be confirmed with the customer/SE outside the
+  export.
+- **Override, not-reviewed (`disposition: "Override"` with
+  `reviewStatus: "not-reviewed"`):** still an open, unreviewed decision —
+  report it with the other not-reviewed decisions, not as separately settled.
 - **Excluded / derived default-no (`excludedDecisions[].applicability`):**
   capability or profile requirements were not satisfied for this target
   profile. This is not observed tenant state and is not automatically
-  "never" — it can change if the profile changes.
+  "never" — it can change if the profile changes. Treat an exclusion that is
+  consistent with the stated profile/context as traceability information for
+  a decision that is not applicable, not as open work needing attention.
+  Only flag an exclusion to validate when it conflicts with the redacted
+  context you were given (for example, the SE says a product is licensed but
+  the profile excludes decisions that require it) — then recommend checking
+  the profile or licensing, not the tenant.
 - **Caveat:** an explicit validation dependency recorded in `caveats` that
-  must be surfaced to the SE and the customer, not treated as fine print.
+  must be surfaced to the SE and the customer, not treated as fine print. The
+  `unreviewed-decisions` and `default-no-exclusions` caveat codes are summary
+  rollups of the same not-reviewed decisions and exclusions you already
+  report elsewhere in the briefing — cite them as supporting evidence for
+  those items, never as additional separate findings.
 - **High rollout band or ongoing band:** operational load, ownership,
   enablement, and sequencing signals — not a security grade.
 - **Foundationally limited domain (`domainProfiles[].foundationLimited`):** a
@@ -107,24 +135,41 @@ cite:
    separate, how many decisions carry each **decision-level**
    `settings[].reviewStatus` (`not-reviewed`/`reviewed`/`derived`); plus any
    input limitations.
-2. **What appears settled** — reviewed and derived decisions, with IDs.
-3. **What remains open** — grouped by reason (`not-reviewed`, `Override`,
-   excluded/default-no, caveat), each citing the exact export field/value.
+2. **What appears settled** — reviewed and derived decisions, including
+   reviewed overrides, with IDs.
+3. **What remains open or needs confirmation** — three distinct groups, each
+   citing the exact export field/value, and never inflated by also listing
+   the `unreviewed-decisions`/`default-no-exclusions` caveats as further
+   separate findings:
+   - Not-reviewed decisions (`settings[].reviewStatus === "not-reviewed"`),
+     regardless of disposition — still open, pending SE/stakeholder
+     alignment.
+   - Reviewed overrides (`disposition === "Override"` with
+     `reviewStatus === "reviewed"`) — settled, deliberate choices whose
+     rationale schema v2 does not store; call out that they need
+     confirmation with the customer, not that they are open work.
+   - Only unexpected exclusions to validate: an
+     `excludedDecisions[].applicability` entry that conflicts with the
+     redacted context you were given. An exclusion consistent with the
+     stated profile/context is traceability, not an open item, and must not
+     be listed here.
 4. **Foundationally limited domains to address first** — domains from
    `domainProfiles` where `foundationLimited` is `true`, ordered before other
    open items. State that the export does not identify the specific limiting
    decision and direct the SE to review that domain's decisions with the
    customer.
-5. **Prioritized SE actions** — for each open item, one of: validate,
-   discover, deep-dive, pilot/phase, or escalate.
+5. **Prioritized SE actions** — for each item from section 3, one of:
+   validate, discover, deep-dive, pilot/phase, or escalate.
 6. **Generic owner roles** — a role (for example, identity administrator,
    security lead, platform engineering, Copilot administrator), never a named
    person, for each action.
 7. **Questions for the next customer meeting** — concrete, grounded in the
-   open items above.
+   items from section 3 above.
 8. **Evidence and assumptions to recheck** — `caveats`,
    `capabilityContext.profileWarnings`, and any catalog source tier below
-   "GitHub Docs · mechanics" that a material conclusion relied on.
+   "GitHub Docs · mechanics" that a material conclusion relied on. Cite
+   `unreviewed-decisions`/`default-no-exclusions` here only as supporting
+   evidence for counts already reported in section 3, not as new findings.
 
 ## Guardrails
 

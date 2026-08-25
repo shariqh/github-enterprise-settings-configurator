@@ -38,6 +38,37 @@ summary (rollout stage, operating model, known constraints — nothing else).
   transcripts, named individuals, customer/account identifiers, deal or
   contract data, and credentials, and asks for a redacted summary instead.
 
+## Plan-level vs. decision-level status
+
+`readiness.status`/`readiness.artifactStatus` is a **plan-level** rollup
+("draft" until every applicable editable decision is reviewed). It is a
+different thing from `settings[].reviewStatus`, a **decision-level** field
+per individual decision (`not-reviewed`, `reviewed`, or `derived`). The agent
+always reports both, never blended into one status — a plan can be `draft`
+while all but one of its decisions are already `reviewed`.
+
+## What counts as "open," settled, or just traceability
+
+The agent does not treat every `Override` or every excluded decision as open
+work:
+
+- A **not-reviewed** decision (any disposition) is open — pending SE and
+  stakeholder alignment.
+- A **reviewed Override** is a settled, deliberate choice. Schema v2 does not
+  store why it was chosen, so the agent reports it as settled but flags that
+  its rationale still needs confirming with the customer outside the export
+  — it is not listed as open work.
+- An **excluded/default-no decision** consistent with the stated
+  profile/context is traceability (a capability requirement wasn't met for
+  this profile), not open work. The agent only flags an exclusion to
+  validate when it conflicts with the redacted context it was given (for
+  example, the SE says a product is licensed but the profile excludes
+  decisions that require it).
+- The `unreviewed-decisions` and `default-no-exclusions` `caveats` entries
+  are summary rollups of the same not-reviewed decisions and exclusions
+  already reported — the agent cites them as supporting evidence, never as
+  additional separate findings.
+
 ## Synthetic invocation example
 
 The export below is **genuinely valid and current** — it is not hand-written.
@@ -101,7 +132,8 @@ sources, and choices for every decision):
   ],
   "settings": [
     { "id": "admin-redundancy", "domain": "Identity & administration", "disposition": "Recommended", "reviewStatus": "reviewed", "role": "Enterprise owner" },
-    { "id": "default-branch-ruleset", "domain": "Organization & repository governance", "selected": "advisory", "disposition": "Override", "reviewStatus": "not-reviewed", "role": "Organization owner / repository administrator" }
+    { "id": "default-branch-ruleset", "domain": "Organization & repository governance", "selected": "advisory", "disposition": "Override", "reviewStatus": "not-reviewed", "role": "Organization owner / repository administrator" },
+    { "id": "runner-network", "domain": "Actions & supply chain", "selected": "self-hosted", "disposition": "Override", "reviewStatus": "reviewed", "role": "Actions administrator / infrastructure owner" }
   ],
   "excludedDecisions": [
     { "id": "copilot-license-topology", "domain": "Copilot governance", "applicability": { "status": "excluded", "reason": "Excluded by catalog availability: requires at least one of `copilot-business`, `copilot-enterprise`." } }
@@ -115,21 +147,27 @@ Given the full input, the agent's briefing would, among other things:
   editable decisions is `not-reviewed`) — kept distinct from the
   **decision-level** `settings[].reviewStatus` breakdown (15 `reviewed`, 1
   `not-reviewed`).
-- Describe `default-branch-ruleset` as an open **Override** to confirm with
-  the customer's repository administrators — the export records it as a
-  deliberate weaker choice (`advisory`), not an error.
+- List `default-branch-ruleset` under **open** items — it is an unreviewed
+  Override (`selected: "advisory"`), still pending SE/stakeholder alignment.
+- List `runner-network` under **settled**, not open — it is a **reviewed**
+  Override (`selected: "self-hosted"`). The agent reports it as a deliberate,
+  already-confirmed choice and notes only that its rationale (not stored in
+  schema v2) should still be confirmed with the customer outside the export.
 - Report `"Organization & repository governance"` as a **foundationally
   limited domain** (`domainProfiles[].foundationLimited: true`), state
   plainly that the export does not identify which specific decision in that
   domain caused the limit, and direct the SE to review that domain's
   decisions with the customer rather than guessing.
-- Describe the 13 excluded decisions (Code Quality and Copilot governance/cost
-  settings) as a **capability gap for this profile** — GHES has no Copilot
-  license and Code Quality is unlicensed here — not a statement about the
-  customer's live tenant or a permanent "no."
+- Treat the 13 excluded decisions (Code Quality and Copilot governance/cost
+  settings) as **traceability, not open work** — GHES has no Copilot license
+  and Code Quality is unlicensed here, consistent with the stated profile, so
+  no validation action is recommended for them (the agent would only flag an
+  exclusion to validate if it conflicted with the redacted context — for
+  example, if the SE said Copilot was licensed).
 - Cite the `ghes-scim-preview` entry in `capabilityContext.profileWarnings`
   as evidence to recheck before the next meeting, since GHES SCIM is a public
-  preview.
+  preview — and cite `unreviewed-decisions`/`default-no-exclusions` only as
+  supporting counts for the items above, not as separate findings.
 
 ## What it will not do
 
@@ -138,8 +176,11 @@ automatic application, guaranteed availability or parity, pricing, a
 timeline, a root cause, a legal interpretation, or a single composite score
 across domains. `domainProfiles` are reported as separate, relative signals.
 It will not name a specific decision as "the" cause of a foundation-limited
-domain unless the export actually identifies one. Any customer-facing recap
-remains a separate, human-authored artifact.
+domain unless the export actually identifies one. It will not present a
+reviewed override or an expected exclusion as open work, and it will not
+double-count the `unreviewed-decisions`/`default-no-exclusions` caveats as
+additional findings beyond what it already reports. Any customer-facing
+recap remains a separate, human-authored artifact.
 
 ## Static enforcement
 
@@ -162,10 +203,11 @@ the checked-in file.
 `tools: ["read", "search"]`, and the absence of any
 edit/shell/GitHub/tenant-mutation tool), the required
 input/privacy/interpretation/output-contract language — including the
-plan-level/decision-level distinction and the exact
-`capabilityContext.profileWarnings` citation — the prohibited-claims
-guardrails, and that the fixture declares the required top-level fields and a
-real profile shape.
+plan-level/decision-level split, the reviewed-override-vs-exclusion-vs-caveat
+distinctions above, and the exact `capabilityContext.profileWarnings`
+citation — the prohibited-claims guardrails, and that the fixture declares
+the required top-level fields, a real profile shape, and both a reviewed and
+a not-reviewed override.
 
 The required `verify` job in `.github/workflows/ci.yml` runs both `pnpm test`
 and `pnpm se-results-interpreter:test` on every pull request and push to

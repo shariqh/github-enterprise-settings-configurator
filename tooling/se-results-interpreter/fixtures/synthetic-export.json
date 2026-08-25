@@ -139,7 +139,7 @@
     "derivedDecisionCount": 2,
     "unreviewedDecisionCount": 1,
     "remainingDecisionCount": 1,
-    "overrideCount": 1
+    "overrideCount": 2
   },
   "caveats": [
     {
@@ -223,13 +223,13 @@
     },
     {
       "domain": "Actions & supply chain",
-      "posture": 1,
+      "posture": 0.75,
       "postureLabel": "Higher",
       "foundationLimited": false,
-      "rolloutLoad": 1,
-      "rolloutBand": "High",
-      "ongoingLoad": 1,
-      "ongoingBand": "High"
+      "rolloutLoad": 0.6571428571428571,
+      "rolloutBand": "Moderate",
+      "ongoingLoad": 0.6,
+      "ongoingBand": "Moderate"
     },
     {
       "domain": "Audit visibility",
@@ -359,7 +359,7 @@
       "order": 17,
       "decisionId": "runner-network",
       "domain": "Actions & supply chain",
-      "desiredStateId": "segmented",
+      "desiredStateId": "self-hosted",
       "reviewStatus": "reviewed"
     },
     {
@@ -1270,19 +1270,19 @@
       "id": "runner-network",
       "domain": "Actions & supply chain",
       "title": "Runner and network boundary",
-      "selected": "segmented",
+      "selected": "self-hosted",
       "desiredState": {
-        "id": "segmented",
-        "label": "Segmented runners + controlled egress",
-        "description": "Separate trust zones and define network policy."
+        "id": "self-hosted",
+        "label": "Self-hosted by exception",
+        "description": "Use only with an owner and isolation design."
       },
       "recommendedState": {
         "id": "segmented",
         "label": "Segmented runners + controlled egress"
       },
-      "disposition": "Recommended",
+      "disposition": "Override",
       "reviewStatus": "reviewed",
-      "selectionSource": "generated-recommendation",
+      "selectionSource": "explicit-selection",
       "applicability": {
         "status": "applicable",
         "reason": "Catalog availability requirements are satisfied by the resolved profile capabilities.",

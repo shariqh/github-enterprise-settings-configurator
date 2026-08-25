@@ -91,9 +91,13 @@ test("agent distinguishes plan-level readiness from decision-level review status
 
 test("agent applies the canonical interpretation contract without inventing a foundational-setting field", () => {
   for (const term of [
-    "Draft / not-reviewed",
-    "Ready for handoff / reviewed",
-    "Override",
+    "Plan-level Draft",
+    "Plan-level Ready for handoff",
+    "Decision-level not-reviewed",
+    "Decision-level reviewed",
+    "Decision-level derived",
+    "Override, reviewed",
+    "Override, not-reviewed",
     "Excluded / derived default-no",
     "Caveat",
     "High rollout band or ongoing band",
@@ -103,6 +107,8 @@ test("agent applies the canonical interpretation contract without inventing a fo
   }
   assertIncludes(agentFlat, 'not automatically "never"');
   assertIncludes(agentFlat, "not a security grade");
+  assertIncludes(agentFlat, "confirmed with the customer/SE outside the export");
+  assertIncludes(agentFlat, "not as separately settled");
 
   // schema-v2 exports never carry a `foundational` flag on individual
   // settings[] entries; the agent must not claim otherwise or promise to
@@ -112,11 +118,24 @@ test("agent applies the canonical interpretation contract without inventing a fo
   assert.equal(agentFlat.includes("`foundational: true`"), false);
 });
 
-test("agent requires the eight-section output contract, citing capabilityContext.profileWarnings by exact path", () => {
+test("agent does not treat every override or exclusion as open work, and never double-counts summary caveats", () => {
+  assertIncludes(
+    agentFlat,
+    "Treat an exclusion that is consistent with the stated profile/context as traceability information",
+  );
+  assertIncludes(agentFlat, "Only flag an exclusion to validate when it conflicts with the redacted");
+  assertIncludes(
+    agentFlat,
+    "are summary rollups of the same not-reviewed decisions and exclusions you already",
+  );
+  assertIncludes(agentFlat, "never as additional separate findings");
+});
+
+test("agent requires the eight-section output contract distinguishing open, settled, and traceability items, citing capabilityContext.profileWarnings by exact path", () => {
   const required = [
     "Result status and input confidence",
     "What appears settled",
-    "What remains open",
+    "What remains open or needs confirmation",
     "Foundationally limited domains to address first",
     "Prioritized SE actions",
     "Generic owner roles",
@@ -126,9 +145,14 @@ test("agent requires the eight-section output contract, citing capabilityContext
   for (const section of required) {
     assertIncludes(agent, section, `missing required output section: ${section}`);
   }
+  assertIncludes(agentFlat, "including reviewed overrides, with IDs");
+  assertIncludes(agentFlat, "Reviewed overrides");
+  assertIncludes(agentFlat, "Only unexpected exclusions to validate");
+  assertIncludes(agentFlat, "must not be listed here");
   assertIncludes(agentFlat, "validate, discover, deep-dive, pilot/phase, or escalate");
   assertIncludes(agentFlat, "never a named person");
   assertIncludes(agentFlat, "capabilityContext.profileWarnings");
+  assertIncludes(agentFlat, "not as new findings");
 });
 
 test("agent forbids the prohibited product and legal claims", () => {
@@ -150,6 +174,9 @@ test("documentation gives a genuinely valid, synthetic invocation example only",
   assertIncludes(docFlat, "pnpm se-results-interpreter:test");
   assertIncludes(docFlat, "parseImportedPlan");
   assertIncludes(docFlat, "does not identify which specific decision in that domain caused the limit");
+  assertIncludes(docFlat, "reviewed** Override");
+  assertIncludes(docFlat, "traceability, not open work");
+  assertIncludes(docFlat, "double-count the");
   // The doc's illustrative JSON and prose must never carry a real customer
   // name, transcript reference, or contract detail alongside the export.
   for (const forbidden of ["transcript excerpt", "contract value", "account executive"]) {
@@ -186,6 +213,15 @@ test("synthetic fixture declares the required top-level export fields and a real
   const dispositions = new Set(fixture.settings.map((item) => item.disposition));
   assert.ok(dispositions.has("Recommended"));
   assert.ok(dispositions.has("Override"));
+
+  // Both an unreviewed and a reviewed override must be present so the
+  // "open vs. settled" distinction has real, concrete examples: an
+  // unreviewed override is still open; a reviewed override is settled but
+  // needs its rationale confirmed outside the export.
+  const overrides = fixture.settings.filter((item) => item.disposition === "Override");
+  assert.ok(overrides.some((item) => item.reviewStatus === "not-reviewed"));
+  assert.ok(overrides.some((item) => item.reviewStatus === "reviewed"));
+
   assert.equal(fixture.excludedDecisions[0].applicability.status, "excluded");
   assert.equal(
     fixture.domainProfiles.some((profile) => profile.foundationLimited === true),
