@@ -21,6 +21,8 @@ Use the app in a facilitated desired-state workshop with the enterprise owner an
 
 Review remains **Draft** until every applicable editable decision has been reviewed; profile-derived decisions do not block readiness. Draft Markdown and JSON exports remain available for workshop continuity after an explicit confirmation. Once review is complete, exports are labeled **Final** and **Ready for handoff**.
 
+The Review page itself frames what a result means, what happens next, what the customer takes away, and how GitHub helps — derived read-only from the same review analysis as the detailed decision, override, caveat, and exclusion lists below it, without duplicating them. GitHub Solutions Engineers running a facilitated session should also read the internal [SE facilitation guide](docs/se-facilitation-guide.md) for pre-call context, the workshop arc, canonical result interpretation, and follow-up responsibilities.
+
 ## Relative posture and complexity model
 
 The review view intentionally avoids a composite grade. Each domain has three separate relative scales:
