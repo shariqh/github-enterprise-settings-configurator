@@ -153,7 +153,7 @@ describe("Review customer outcome and next-step story", () => {
     expect(html).toContain("Use them as the handoff agenda with the customer")
   })
 
-  it("gives truthful draft next-step guidance when decisions remain unreviewed", () => {
+  it("gives truthful draft next-step guidance when a single decision remains unreviewed (singular copy)", () => {
     const currentPlan = plan()
     const html = renderReview(currentPlan, [recommended(setting())], [], "markdown")
 
@@ -161,10 +161,10 @@ describe("Review customer outcome and next-step story", () => {
     expect(html).toContain("Needs attention")
     expect(html).toContain("A draft desired-state artifact")
     expect(html).toContain("draft handoff export is available for workshop continuity")
-    expect(html).toContain("1 of 1 applicable editable decisions remain pending review, held as named, open choices rather than resolved facts.")
+    expect(html).toContain("1 of 1 applicable editable decision remains pending review, held as a named, open choice rather than a resolved fact.")
   })
 
-  it("gives truthful ready next-step guidance once every decision is reviewed", () => {
+  it("gives truthful ready next-step guidance once a single decision is reviewed (singular copy)", () => {
     const currentPlan = plan()
     const item = recommended(setting())
     const html = renderReview(currentPlan, [item], [item.setting.id])
@@ -172,7 +172,25 @@ describe("Review customer outcome and next-step story", () => {
     expect(html).toContain("Every applicable editable decision has already been reviewed")
     expect(html).toContain("A reviewed desired-state artifact")
     expect(html).toContain("ready for a final handoff export")
-    expect(html).toContain("All 1 applicable editable decisions have been reviewed, but the result is still this desired-state record, not an observed or independently validated fact.")
+    expect(html).toContain("The 1 applicable editable decision has been reviewed, but the result is still this desired-state record, not an observed or independently validated fact.")
+  })
+
+  it("gives grammatically correct plural copy when multiple decisions remain unreviewed", () => {
+    const currentPlan = plan()
+    const first = recommended(twoChoiceSetting({ id: "first-decision" }))
+    const second = recommended(twoChoiceSetting({ id: "second-decision" }))
+    const html = renderReview(currentPlan, [first, second], [])
+
+    expect(html).toContain("2 of 2 applicable editable decisions remain pending review, held as named, open choices rather than resolved facts.")
+  })
+
+  it("gives grammatically correct plural copy once multiple decisions are reviewed", () => {
+    const currentPlan = plan()
+    const first = recommended(twoChoiceSetting({ id: "first-decision" }))
+    const second = recommended(twoChoiceSetting({ id: "second-decision" }))
+    const html = renderReview(currentPlan, [first, second], [first.setting.id, second.setting.id])
+
+    expect(html).toContain("All 2 applicable editable decisions have been reviewed, but the result is still this desired-state record, not an observed or independently validated fact.")
   })
 
   it("flags deliberate overrides for rationale and owner confirmation", () => {

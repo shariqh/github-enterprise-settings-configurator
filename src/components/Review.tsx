@@ -19,6 +19,22 @@ interface ReviewProps {
 const choiceLabel = (item: RecommendedSetting): string =>
   item.setting.choices.find((choice) => choice.id === item.selected)?.label ?? item.selected
 
+const openDecisionsSummary = (readiness: PlanReviewAnalysis["readiness"]): string => {
+  const total = readiness.applicableEditableDecisionCount
+  const isSingular = total === 1
+
+  if (readiness.remainingDecisionCount > 0) {
+    const decisionNoun = isSingular ? "decision remains" : "decisions remain"
+    const choiceNoun = isSingular ? "a named, open choice" : "named, open choices"
+    const factNoun = isSingular ? "a resolved fact" : "resolved facts"
+    return `${readiness.remainingDecisionCount} of ${total} applicable editable ${decisionNoun} pending review, held as ${choiceNoun} rather than ${factNoun}.`
+  }
+
+  const subject = isSingular ? "The" : "All"
+  const decisionNoun = isSingular ? "decision has" : "decisions have"
+  return `${subject} ${total} applicable editable ${decisionNoun} been reviewed, but the result is still this desired-state record, not an observed or independently validated fact.`
+}
+
 export function Review({
   settings,
   intent,
@@ -95,11 +111,7 @@ export function Review({
           </div>
           <div>
             <dt>Open decisions stay explicit</dt>
-            <dd>
-              {readiness.remainingDecisionCount > 0
-                ? `${readiness.remainingDecisionCount} of ${readiness.applicableEditableDecisionCount} applicable editable decisions remain pending review, held as named, open choices rather than resolved facts.`
-                : `All ${readiness.applicableEditableDecisionCount} applicable editable decisions have been reviewed, but the result is still this desired-state record, not an observed or independently validated fact.`}
-            </dd>
+            <dd>{openDecisionsSummary(readiness)}</dd>
           </div>
           <div>
             <dt>Planning effort is not a grade</dt>
