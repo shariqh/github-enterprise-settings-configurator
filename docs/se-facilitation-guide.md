@@ -98,12 +98,13 @@ one, specifically."
 
 ### Handoff
 
-Export both artifacts. The Markdown review handoff is for people: it is the
-ordered, human-readable checklist with owners, prerequisites, caveats,
-exclusions, and evidence links. The JSON desired-state contract is for tools
-and re-entry: a customer or partner can import it back into the configurator
-later, or adapt it for an authorized downstream tool. Confirm with the
-customer which artifact(s) they need before ending the call.
+Offer both artifacts, and export or share only the ones the customer actually
+needs. The Markdown review handoff is for people: it is the ordered,
+human-readable checklist with owners, prerequisites, caveats, exclusions, and
+evidence links. The JSON desired-state contract is for tools and re-entry: a
+customer or partner can import it back into the configurator later, or adapt
+it for an authorized downstream tool. Ask which artifact(s) they need before
+ending the call, and export accordingly.
 
 ### Follow-through
 

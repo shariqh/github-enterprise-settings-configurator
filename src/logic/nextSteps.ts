@@ -17,6 +17,16 @@ const domainList = (profiles: DomainProfile[]): string =>
   profiles.map((profile) => profile.domain).join(", ")
 
 /**
+ * Caveat codes that `buildPlanReviewAnalysis` synthesizes purely to
+ * summarize state already surfaced by the "finish unreviewed decisions" and
+ * catalog exclusions themselves. Treating them as actionable here would
+ * double up with those dedicated signals and make this lane read as
+ * permanently attention-needed on almost every valid profile, since expected
+ * default-no exclusions are the normal case, not a problem to flag.
+ */
+const summaryCaveatCodes = new Set(["unreviewed-decisions", "default-no-exclusions"])
+
+/**
  * Derives read-only, ephemeral "what happens next" lanes from the existing
  * canonical review analysis and domain profiles. This introduces no new
  * readiness, scoring, or applicability logic and no persisted state — every
@@ -30,7 +40,7 @@ export const buildNextStepLanes = (
 ): NextStepLane[] => {
   const remaining = analysis.readiness.remainingDecisionCount
   const overrideCount = analysis.overrideCount
-  const caveatCount = analysis.caveats.length
+  const actionableCaveats = analysis.caveats.filter((caveat) => !summaryCaveatCodes.has(caveat.code))
   const exclusionCount = analysis.excludedDecisions.length
   const foundationLimited = profiles.filter((profile) => profile.foundationLimited)
   const highEffort = profiles.filter(
@@ -57,10 +67,18 @@ export const buildNextStepLanes = (
     {
       id: "validate-caveats",
       title: "Validate caveats, exclusions, licensing, deployment, and current docs",
-      detail: caveatCount > 0 || exclusionCount > 0
-        ? `${caveatCount} open ${plural(caveatCount, "caveat", "caveats")} and ${exclusionCount} excluded catalog ${plural(exclusionCount, "decision", "decisions")} come from the profile and capability model, not observed tenant state. Validate licensing, deployment, and current product documentation with the customer before treating either as fact.`
-        : "No open caveats or excluded decisions were recorded. Licensing, deployment, and current product documentation are still worth confirming with the customer.",
-      status: caveatCount > 0 || exclusionCount > 0 ? "attention" : "clear",
+      detail: actionableCaveats.length > 0
+        ? `${actionableCaveats.length} open ${plural(actionableCaveats.length, "caveat", "caveats")} (such as unresolved current state or a profile warning) need validation against current licensing, deployment, and product documentation before this plan is treated as settled.${
+          exclusionCount > 0
+            ? ` ${exclusionCount} catalog ${plural(exclusionCount, "decision is", "decisions are")} also excluded by the profile and capability model for traceability; validate those specifically only if an exclusion is unexpected.`
+            : ""
+        }`
+        : `No open caveats need validation.${
+          exclusionCount > 0
+            ? ` ${exclusionCount} catalog ${plural(exclusionCount, "decision is", "decisions are")} excluded by the profile and capability model for traceability, not because of an observed gap — validate profile and licensing choices only if an exclusion is unexpected.`
+            : " Licensing, deployment, and current product documentation are still worth confirming with the customer."
+        }`,
+      status: actionableCaveats.length > 0 ? "attention" : "clear",
     },
     {
       id: "foundational-limits",

@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest"
 import { buildNextStepLanes } from "./nextSteps"
+import { defaultIntent } from "./intent"
+import { defaultProfile } from "./profile"
+import { buildPlanReviewAnalysis } from "./readiness"
+import { getRecommendedSettings } from "./recommendations"
+import { buildDomainProfiles } from "./scoring"
 import type { DomainProfile } from "./scoring"
 import type { PlanReviewAnalysis } from "./readiness"
+import type { Plan } from "../types"
 
 const baseAnalysis = (overrides: Partial<PlanReviewAnalysis> = {}): PlanReviewAnalysis => ({
   readiness: {
-    status: "draft",
-    artifactStatus: "draft",
+    status: "ready-for-handoff",
+    artifactStatus: "final",
     applicableEditableDecisionCount: 4,
     reviewedDecisionCount: 4,
     remainingDecisionCount: 0,
@@ -84,9 +90,9 @@ describe("buildNextStepLanes", () => {
     expect(lane?.detail).toContain("2 values differ")
   })
 
-  it("flags caveats and exclusions without listing the underlying items", () => {
+  it("flags an actionable caveat and reports exclusions as traceability, without listing underlying items", () => {
     const analysis = baseAnalysis({
-      caveats: [{ code: "unreviewed-decisions", message: "message" }],
+      caveats: [{ code: "profile-warning-example", message: "message" }],
       excludedDecisions: [
         {
           id: "excluded-1",
@@ -101,9 +107,31 @@ describe("buildNextStepLanes", () => {
 
     expect(lane?.status).toBe("attention")
     expect(lane?.detail).toContain("1 open caveat")
-    expect(lane?.detail).toContain("1 excluded catalog decision")
+    expect(lane?.detail).toContain("1 catalog decision is also excluded")
     expect(lane?.detail).not.toContain("Excluded setting")
-    expect(lane?.detail).toContain("not observed tenant state")
+  })
+
+  it("does not treat summary caveat codes (unreviewed-decisions, default-no-exclusions) as actionable on their own", () => {
+    const analysis = baseAnalysis({
+      caveats: [
+        { code: "unreviewed-decisions", message: "message" },
+        { code: "default-no-exclusions", message: "message" },
+      ],
+      excludedDecisions: [
+        {
+          id: "excluded-1",
+          domain: "Code security",
+          title: "Excluded setting",
+          applicability: { status: "excluded", reason: "reason", requirements: { allOf: [], anyOf: [], noneOf: [], missingAllOf: [], anyOfSatisfied: null, presentNoneOf: [] } },
+        },
+      ],
+    })
+    const lanes = buildNextStepLanes(analysis, [domainProfile()])
+    const lane = lanes.find((item) => item.id === "validate-caveats")
+
+    expect(lane?.status).toBe("clear")
+    expect(lane?.detail).toContain("No open caveats need validation")
+    expect(lane?.detail).toContain("traceability")
   })
 
   it("flags a foundational-limited domain by name without treating it as a gap", () => {
@@ -126,5 +154,54 @@ describe("buildNextStepLanes", () => {
     expect(lane?.status).toBe("attention")
     expect(lane?.detail).toContain("Actions & supply chain")
     expect(lane?.detail).toContain("not weak security")
+  })
+})
+
+describe("buildNextStepLanes validate-caveats real-analysis regression", () => {
+  const planWith = (currentState: Plan["profile"]["currentState"]): Plan => ({
+    profile: { ...defaultProfile, currentState },
+    intent: defaultIntent,
+    priorities: [],
+    selections: {},
+  })
+
+  it("stays Clear for a fully reviewed real plan whose only caveat is expected default-no exclusions", () => {
+    const plan = planWith("greenfield")
+    const settings = getRecommendedSettings(plan)
+    const reviewedIds = settings
+      .filter((item) => item.setting.editable !== false)
+      .map((item) => item.setting.id)
+    const analysis = buildPlanReviewAnalysis(plan, settings, reviewedIds)
+    const profiles = buildDomainProfiles(settings)
+
+    // Guard the fixture's own assumptions so this regression stays meaningful.
+    expect(analysis.readiness.isReady).toBe(true)
+    expect(analysis.excludedDecisions.length).toBeGreaterThan(0)
+    expect(analysis.caveats.every((caveat) => caveat.code === "default-no-exclusions")).toBe(true)
+
+    const lanes = buildNextStepLanes(analysis, profiles)
+    const lane = lanes.find((item) => item.id === "validate-caveats")
+
+    expect(lane?.status).toBe("clear")
+    expect(lane?.detail).toContain("No open caveats need validation")
+    expect(lane?.detail).toContain("traceability")
+  })
+
+  it("flags a real plan with an actionable caveat such as unresolved current tenant state", () => {
+    const plan = planWith("unknown")
+    const settings = getRecommendedSettings(plan)
+    const reviewedIds = settings
+      .filter((item) => item.setting.editable !== false)
+      .map((item) => item.setting.id)
+    const analysis = buildPlanReviewAnalysis(plan, settings, reviewedIds)
+    const profiles = buildDomainProfiles(settings)
+
+    expect(analysis.caveats.some((caveat) => caveat.code === "unresolved-current-state")).toBe(true)
+
+    const lanes = buildNextStepLanes(analysis, profiles)
+    const lane = lanes.find((item) => item.id === "validate-caveats")
+
+    expect(lane?.status).toBe("attention")
+    expect(lane?.detail).toContain("1 open caveat")
   })
 })

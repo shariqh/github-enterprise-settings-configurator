@@ -96,8 +96,9 @@ export function Review({
           <div>
             <dt>Open decisions stay explicit</dt>
             <dd>
-              {readiness.remainingDecisionCount} of {readiness.applicableEditableDecisionCount} applicable editable
-              decisions remain named, open choices rather than resolved facts.
+              {readiness.remainingDecisionCount > 0
+                ? `${readiness.remainingDecisionCount} of ${readiness.applicableEditableDecisionCount} applicable editable decisions remain pending review, held as named, open choices rather than resolved facts.`
+                : `All ${readiness.applicableEditableDecisionCount} applicable editable decisions have been reviewed, but the result is still this desired-state record, not an observed or independently validated fact.`}
             </dd>
           </div>
           <div>
@@ -124,8 +125,8 @@ export function Review({
           <div>
             <h2 id="review-next-steps-heading">What happens next</h2>
             <p>
-              These lanes are derived from the decision, override, caveat, exclusion, and effort state below. They
-              add no assignment, checkboxes, or due dates.
+              These lanes are derived from the decision, override, caveat, exclusion, and effort state below. Use
+              them as the handoff agenda with the customer; the specifics stay in the detailed sections underneath.
             </p>
           </div>
         </header>
@@ -300,8 +301,8 @@ export function Review({
             <p>
               Focused discovery on the decisions still open above, validation of caveats and exclusions against
               current product documentation and licensing, pilot or phased-rollout planning for high-effort domains,
-              and escalation when authoritative evidence is missing. GitHub does not inspect this tenant, apply these
-              settings, or assess compliance.
+              and escalation when authoritative evidence is missing. This configurator does not inspect this tenant,
+              apply these settings, or assess compliance.
             </p>
           </div>
         </header>

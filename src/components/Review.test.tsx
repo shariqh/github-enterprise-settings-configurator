@@ -149,7 +149,8 @@ describe("Review customer outcome and next-step story", () => {
     expect(html).toContain("What the customer takes away")
     expect(html).toContain("How GitHub helps")
     expect(html).toContain("desired-state decision record")
-    expect(html).toContain("does not inspect this tenant, apply these settings, or assess compliance")
+    expect(html).toContain("This configurator does not inspect this tenant, apply these settings, or assess compliance")
+    expect(html).toContain("Use them as the handoff agenda with the customer")
   })
 
   it("gives truthful draft next-step guidance when decisions remain unreviewed", () => {
@@ -160,6 +161,7 @@ describe("Review customer outcome and next-step story", () => {
     expect(html).toContain("Needs attention")
     expect(html).toContain("A draft desired-state artifact")
     expect(html).toContain("draft handoff export is available for workshop continuity")
+    expect(html).toContain("1 of 1 applicable editable decisions remain pending review, held as named, open choices rather than resolved facts.")
   })
 
   it("gives truthful ready next-step guidance once every decision is reviewed", () => {
@@ -170,6 +172,7 @@ describe("Review customer outcome and next-step story", () => {
     expect(html).toContain("Every applicable editable decision has already been reviewed")
     expect(html).toContain("A reviewed desired-state artifact")
     expect(html).toContain("ready for a final handoff export")
+    expect(html).toContain("All 1 applicable editable decisions have been reviewed, but the result is still this desired-state record, not an observed or independently validated fact.")
   })
 
   it("flags deliberate overrides for rationale and owner confirmation", () => {
