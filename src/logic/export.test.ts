@@ -88,10 +88,14 @@ describe("exportObject", () => {
     expect(result.profile.basePlan).toBe(plan.profile.basePlan)
     expect(result.profile.licensedProducts).toEqual(plan.profile.licensedProducts)
     expect(result.profile.planningScope).toEqual(plan.profile.planningScope)
+    expect(result.catalog.documentationBaseline).toEqual(expect.objectContaining({
+      enterpriseServerTarget: "latest generally available release",
+      enterpriseServer: "3.21.4",
+    }))
     expect(result.capabilityContext.resolvedCapabilities).toContain("enterprise-account")
     expect(result.planningContext.priorities[0]).toEqual(expect.objectContaining({
       id: "secure-ghec",
-      label: "Secure GHEC baseline",
+      label: "Secure GitHub Enterprise Cloud baseline",
     }))
     expect(result.limitations).toContain("Does not inspect, validate, or change a GitHub tenant.")
     expect(result.artifactStatus).toBe("final")
@@ -211,11 +215,11 @@ describe("buildMarkdown", () => {
 
     expect(markdown).toContain("## Target profile")
     expect(markdown).toContain("- Deployment: GitHub Enterprise Cloud")
-    expect(markdown).toContain("- Base plan: Enterprise")
+    expect(markdown).toContain("- Base plan: GitHub Enterprise")
     expect(markdown).toContain("- Account model: Personal accounts")
-    expect(markdown).toContain("- Authentication: GitHub authentication")
+    expect(markdown).toContain("- Authentication: GitHub.com credentials")
     expect(markdown).toContain("- Provisioning: None")
-    expect(markdown).toContain("- Repository visibility: Mixed")
+    expect(markdown).toContain("- Repository visibility: Public, private, and internal")
     expect(markdown).toContain("- Current state: Greenfield")
     expect(markdown).toContain("## Licensed products")
     expect(markdown).toContain("- Secret Protection: Licensed")
@@ -224,7 +228,45 @@ describe("buildMarkdown", () => {
     expect(markdown).toContain("- Copilot: None")
     expect(markdown).toContain("## Planning scope")
     expect(markdown).toContain("- GitHub Actions: Included")
-    expect(markdown).toContain("- Audit log: Included")
+    expect(markdown).toContain("- Audit log visibility: Included")
+  })
+
+  it("uses canonical product names for a GitHub Enterprise Server profile", () => {
+    const plan = basePlan()
+    plan.profile = {
+      ...plan.profile,
+      deployment: "ghes",
+      accountModel: "instance",
+      authentication: "built-in",
+      provisioning: "manual",
+      repositoryVisibility: "private-internal",
+      currentState: "migration",
+    }
+    const markdown = buildMarkdown(plan, [])
+    const json = exportObject(plan, [], [])
+
+    expect(markdown).toContain("- Deployment: GitHub Enterprise Server")
+    expect(markdown).toContain("- Account model: Instance accounts (GitHub Enterprise Server)")
+    expect(markdown).toContain("- Authentication: Built-in authentication")
+    expect(markdown).toContain("- Provisioning: Manual account creation")
+    expect(markdown).toContain("- Repository visibility: Private and internal only")
+    expect(markdown).toContain("- Current state: Migration in progress")
+    expect(markdown).toContain("GitHub Enterprise Server recommendations target the latest generally available release")
+    expect(json.limitations).toContain("GitHub Enterprise Server recommendations target the latest generally available release; confirm the deployed release before implementation.")
+  })
+
+  it("capitalizes the GitHub Enterprise Cloud with Data Residency product name", () => {
+    const plan = basePlan()
+    plan.profile = {
+      ...plan.profile,
+      deployment: "residency",
+      accountModel: "managed",
+      authentication: "saml",
+      provisioning: "scim",
+      repositoryVisibility: "private-internal",
+    }
+
+    expect(buildMarkdown(plan, [])).toContain("- Deployment: GitHub Enterprise Cloud with Data Residency")
   })
 
   it("turns applicable settings into a domain-ordered implementation checklist", () => {

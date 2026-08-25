@@ -9,19 +9,24 @@ import {
 } from "./readiness"
 import type { ExcludedDecision } from "./readiness"
 import { buildDomainProfiles } from "./scoring"
+import {
+  accountModelLabels,
+  authenticationLabels,
+  basePlanLabels,
+  copilotPlanLabels,
+  currentStateLabels,
+  deploymentLabels,
+  licensedProductLabels,
+  licensedProductOrder,
+  licenseStatusLabels,
+  planningScopeLabels,
+  planningScopeOrder,
+  provisioningLabels,
+  repositoryVisibilityLabels,
+} from "../profileLabels"
 import type {
-  AccountModel,
-  AuthenticationMethod,
-  BasePlan,
-  CopilotPlan,
-  CurrentState,
-  Deployment,
-  LicenseStatus,
-  LicensedProductId,
   Plan,
-  ProvisioningMethod,
   RecommendedSetting,
-  RepositoryVisibility,
   Setting,
   Source,
 } from "../types"
@@ -31,79 +36,6 @@ export const EXPORT_SCHEMA_VERSION = 2
 export type ExportFormat = "json" | "markdown"
 
 const generatedAt = () => new Date().toISOString()
-
-const deploymentLabels: Record<Deployment, string> = {
-  dotcom: "GitHub Enterprise Cloud",
-  residency: "GHE.com data residency",
-  ghes: "GitHub Enterprise Server",
-}
-
-const basePlanLabels: Record<BasePlan, string> = {
-  team: "Team",
-  enterprise: "Enterprise",
-  unknown: "Unknown",
-}
-
-const accountModelLabels: Record<AccountModel, string> = {
-  personal: "Personal accounts",
-  managed: "Managed user accounts (EMU)",
-  instance: "Instance accounts",
-  unknown: "Unknown",
-}
-
-const authenticationLabels: Record<AuthenticationMethod, string> = {
-  github: "GitHub authentication",
-  saml: "SAML SSO",
-  oidc: "OIDC SSO",
-  "built-in": "Built-in authentication",
-  ldap: "LDAP",
-  cas: "CAS",
-  unknown: "Unknown",
-}
-
-const provisioningLabels: Record<ProvisioningMethod, string> = {
-  none: "None",
-  "scim-access": "SCIM (SSO-triggered access)",
-  scim: "SCIM provisioning",
-  jit: "Just-in-time provisioning",
-  ldap: "LDAP sync",
-  "first-sign-in": "First sign-in provisioning",
-  manual: "Manual provisioning",
-  unknown: "Unknown",
-}
-
-const repositoryVisibilityLabels: Record<RepositoryVisibility, string> = {
-  public: "Public",
-  "private-internal": "Private/internal",
-  mixed: "Mixed",
-  unknown: "Unknown",
-}
-
-const currentStateLabels: Record<CurrentState, string> = {
-  greenfield: "Greenfield",
-  existing: "Existing tenant",
-  migration: "Migration in progress",
-  unknown: "Unknown",
-}
-
-const licenseStatusLabels: Record<LicenseStatus, string> = {
-  unlicensed: "Not licensed",
-  licensed: "Licensed",
-  unknown: "Unknown",
-}
-
-const copilotPlanLabels: Record<CopilotPlan, string> = {
-  none: "None",
-  business: "Copilot Business",
-  enterprise: "Copilot Enterprise",
-  unknown: "Unknown",
-}
-
-const licensedProductLabels: Record<LicensedProductId, string> = {
-  secretProtection: "Secret Protection",
-  codeSecurity: "Code Security",
-  codeQuality: "Code Quality",
-}
 
 const selectedChoice = (item: RecommendedSetting) =>
   item.setting.choices.find((choice) => choice.id === item.selected)
@@ -202,6 +134,9 @@ export const exportObject = (
       "Does not inspect, validate, or change a GitHub tenant.",
       "Does not establish compliance or confirm product availability beyond the catalog evidence and resolved profile.",
       "Application outcomes must be validated by an authorized operator.",
+      ...(plan.profile.deployment === "ghes"
+        ? ["GitHub Enterprise Server recommendations target the latest generally available release; confirm the deployed release before implementation."]
+        : []),
     ],
     catalog: catalogMetadata,
     profile: plan.profile,
@@ -262,8 +197,10 @@ export const buildMarkdown = (
   const reviewedIds = new Set(analysis.reviewedSettingIds)
   const excluded = analysis.excludedDecisions
   const caveats = analysis.caveats
-  const licensedProductLines = (Object.keys(licensedProductLabels) as LicensedProductId[])
+  const licensedProductLines = licensedProductOrder
     .map((product) => `- ${licensedProductLabels[product]}: ${licenseStatusLabels[profile.licensedProducts[product]]}`)
+  const planningScopeLines = planningScopeOrder
+    .map((scope) => `- ${planningScopeLabels[scope]}: ${profile.planningScope[scope] ? "Included" : "Not included"}`)
   const domainGroups = settings.reduce<Map<Setting["domain"], RecommendedSetting[]>>((groups, item) => {
     const current = groups.get(item.setting.domain) ?? []
     current.push(item)
@@ -343,8 +280,7 @@ export const buildMarkdown = (
     `- Copilot: ${copilotPlanLabels[profile.licensedProducts.copilot]}`,
     "",
     "### Planning scope",
-    `- GitHub Actions: ${profile.planningScope.actions ? "Included" : "Not included"}`,
-    `- Audit log: ${profile.planningScope.audit ? "Included" : "Not included"}`,
+    ...planningScopeLines,
     "",
     "### Planning intent and priorities",
     ...intentAxes.map((axis) => `- ${intentAxisDefinitions[axis].label}: ${intentLabel(axis, plan.intent[axis])}`),
@@ -376,6 +312,9 @@ export const buildMarkdown = (
     "## Boundaries",
     "- Static desired state only; no tenant observation, direct apply, or backend connection.",
     "- This plan provides decision support, not a universal security score, breach prediction, or cross-customer comparison.",
+    ...(profile.deployment === "ghes"
+      ? ["- GitHub Enterprise Server recommendations target the latest generally available release recorded in the catalog; confirm the deployed release before implementation."]
+      : []),
     "- An authorized operator must validate target capability, access, implementation, and outcome.",
   ]
   return lines.join("\n")

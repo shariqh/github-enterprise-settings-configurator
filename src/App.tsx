@@ -31,6 +31,21 @@ import {
 } from "./logic/profile"
 import { getRecommendedSettings } from "./logic/recommendations"
 import { buildPlanReviewAnalysis } from "./logic/readiness"
+import {
+  accountModelLabels,
+  authenticationLabels,
+  basePlanLabels,
+  copilotPlanLabels,
+  currentStateLabels,
+  deploymentLabels,
+  licensedProductLabels,
+  licensedProductOrder,
+  licenseStatusLabels,
+  planningScopeLabels,
+  planningScopeOrder,
+  provisioningLabels,
+  repositoryVisibilityLabels,
+} from "./profileLabels"
 import type {
   AccountModel,
   AuthenticationMethod,
@@ -69,87 +84,6 @@ const domainOrder: Domain[] = [
 ]
 
 const currentStates: CurrentState[] = ["greenfield", "existing", "migration", "unknown"]
-
-const deploymentLabels: Record<Deployment, string> = {
-  dotcom: "GitHub.com",
-  residency: "GHE.com data residency",
-  ghes: "GHES 3.21",
-}
-
-const basePlanLabels: Record<BasePlan, string> = {
-  team: "GitHub Team",
-  enterprise: "GitHub Enterprise",
-  unknown: "Unknown — needs discovery",
-}
-
-const accountModelLabels: Record<AccountModel, string> = {
-  personal: "Personal accounts",
-  managed: "Managed users (EMU)",
-  instance: "Instance accounts (GHES)",
-  unknown: "Unknown — needs discovery",
-}
-
-const authenticationLabels: Record<AuthenticationMethod, string> = {
-  github: "GitHub.com credentials",
-  saml: "SAML SSO",
-  oidc: "OIDC SSO",
-  "built-in": "Built-in authentication",
-  ldap: "LDAP",
-  cas: "CAS",
-  unknown: "Unknown — needs discovery",
-}
-
-const provisioningLabels: Record<ProvisioningMethod, string> = {
-  none: "None",
-  "scim-access": "SAML SSO only (no SCIM provisioning)",
-  scim: "SCIM provisioning",
-  jit: "Just-in-time provisioning",
-  ldap: "LDAP sync",
-  "first-sign-in": "First sign-in provisioning",
-  manual: "Manual account creation",
-  unknown: "Unknown — needs discovery",
-}
-
-const repositoryVisibilityLabels: Record<RepositoryVisibility, string> = {
-  public: "Public",
-  "private-internal": "Private/internal only",
-  mixed: "Public and private/internal",
-  unknown: "Unknown — needs discovery",
-}
-
-const currentStateLabels: Record<CurrentState, string> = {
-  greenfield: "Greenfield",
-  existing: "Existing environment",
-  migration: "Migration",
-  unknown: "Unknown / discovery needed",
-}
-
-const licenseStatusLabels: Record<LicenseStatus, string> = {
-  unlicensed: "Not licensed",
-  licensed: "Licensed",
-  unknown: "Unknown — needs discovery",
-}
-
-const copilotPlanLabels: Record<CopilotPlan, string> = {
-  none: "None",
-  business: "Copilot Business",
-  enterprise: "Copilot Enterprise",
-  unknown: "Unknown — needs discovery",
-}
-
-const licensedProductLabels: Record<LicensedProductId, string> = {
-  secretProtection: "Secret Protection",
-  codeSecurity: "Code Security",
-  codeQuality: "Code Quality",
-}
-
-const planningScopeLabels: Record<PlanningScopeId, string> = {
-  actions: "GitHub Actions",
-  audit: "Audit log visibility",
-}
-
-const licensedProductOrder: LicensedProductId[] = ["secretProtection", "codeSecurity", "codeQuality"]
-const planningScopeOrder: PlanningScopeId[] = ["actions", "audit"]
 
 type ActiveSection = "profile" | "review" | Domain
 type DomainView = "guided" | "list"
@@ -1164,6 +1098,10 @@ function ProfileContext() {
       <section>
         <h2>What “reviewed” means</h2>
         <p>A recommendation is not treated as accepted until you save it or explicitly accept the remaining recommendations in that domain.</p>
+      </section>
+      <section>
+        <h2>Product baseline</h2>
+        <p>Cloud recommendations follow current GitHub documentation. GitHub Enterprise Server recommendations target the latest generally available release; confirm the customer&apos;s deployed release before implementation.</p>
       </section>
       <section>
         <h2>Boundary</h2>

@@ -319,7 +319,7 @@ describe("Team, GHES, and GHE.com constraints", () => {
     expect(getProfileWarnings(profile).some((message) => message.toLowerCase().includes("public preview"))).toBe(true)
   })
 
-  it("excludes Code Quality settings on GHE.com data residency even when the license flag is set", () => {
+  it("excludes Code Quality settings on GHE.com Data Residency even when the license flag is set", () => {
     const combination = identityCompatibilityMatrix.find((entry) => entry.deployment === "residency")!
     const profile = profileFor(combination, {
       planningScope: { actions: true, audit: true },

@@ -1,3 +1,4 @@
+import { basePlanLabels, deploymentLabels } from "../profileLabels"
 import type {
   AccountModel,
   AuthenticationMethod,
@@ -270,7 +271,7 @@ export function getProfileErrors(profile: Profile): ProfileIssue[] {
     errors.push({
       code: "residency-public-repositories",
       field: "repositoryVisibility",
-      message: "GHE.com data residency uses managed users and does not support public repositories.",
+      message: `${deploymentLabels.residency} uses Enterprise Managed Users and does not support public repositories.`,
     })
   }
 
@@ -283,7 +284,7 @@ export function getProfileErrors(profile: Profile): ProfileIssue[] {
         code: `unsupported-${product}`,
         field: `licensedProducts.${product}`,
         message: product === "codeQuality"
-          ? "GitHub Code Quality is supported for GitHub.com Team or Enterprise Cloud plans and requires GitHub Actions; GHE.com availability is not yet documented and GHES is unsupported at launch."
+          ? `GitHub Code Quality is supported on GitHub.com for ${basePlanLabels.team} and ${deploymentLabels.dotcom}, and requires GitHub Actions; ${deploymentLabels.residency} availability is not yet documented, and ${deploymentLabels.ghes} is unsupported at launch.`
           : `${product} requires a GitHub Team or Enterprise base plan.`,
       })
     }
@@ -296,7 +297,7 @@ export function getProfileErrors(profile: Profile): ProfileIssue[] {
       code: "unsupported-copilot",
       field: "licensedProducts.copilot",
       message: profile.deployment === "ghes"
-        ? "GitHub Copilot is not available for GitHub Enterprise Server."
+        ? `GitHub Copilot is not available for ${deploymentLabels.ghes}.`
         : "The selected Copilot plan is not supported by this deployment and base plan.",
     })
   }
@@ -310,7 +311,7 @@ export function getProfileWarnings(profile: Profile): ProfileIssue[] {
     warnings.push({
       code: "ghes-scim-preview",
       field: "provisioning",
-      message: "SCIM provisioning for GHES 3.21 is a public preview and requires SAML authentication.",
+      message: `SCIM provisioning for ${deploymentLabels.ghes} is a public preview and requires SAML authentication.`,
     })
   }
   if (profile.basePlan === "team" && profile.licensedProducts.copilot === "business") {
